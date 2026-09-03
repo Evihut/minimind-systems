@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "environment": {
+    "python": "3.13.5",
+    "torch": "2.12.1",
+    "transformers": "5.12.1",
+    "platform": "macOS-26.6-arm64-arm-64bit-Mach-O",
+    "device": "cpu",
+    "accelerator": null
+  },
+  "distributed": {
+    "backend": null,
+    "world_size": 1
+  },
+  "model": {
+    "preset": {
+      "hidden_size": 64,
+      "num_hidden_layers": 2,
+      "num_attention_heads": 4,
+      "num_key_value_heads": 2
+    },
+    "parameters": 532864,
+    "parameters_millions": 0.5329,
+    "estimated_fp32_size_mb": 2.033
+  },
+  "data": {
+    "train_samples": 32,
+    "validation_samples": 8,
+    "sequence_length": 64,
+    "source": "built-in engineering corpus"
+  },
+  "training": {
+    "steps": 40,
+    "global_batch_size": 8,
+    "precision": "fp32",
+    "learning_rate": 0.003,
+    "loss_first": 8.785713,
+    "loss_final": 1.503575,
+    "loss_curve": [
+      8.785713,
+      8.594364,
+      8.236194,
+      8.066218,
+      7.892614,
+      7.626243,
+      7.369195,
+      7.058617,
+      6.989378,
+      6.725821,
+      6.422263,
+      6.113065,
+      5.859903,
+      5.749701,
+      5.49707,
+      5.244536,
+      4.972104,
+      4.941775,
+      4.503905,
+      4.22035,
+      4.010312,
+      4.028677,
+      3.943744,
+      3.533425,
+      3.525378,
+      3.303834,
+      3.133729,
+      2.992885,
+      2.761697,
+      2.750514,
+      2.649711,
+      2.525103,
+      2.270384,
+      2.269358,
+      2.079402,
+      2.110689,
+      1.836576,
+      1.661522,
+      1.849064,
+      1.503575
+    ],
+    "seconds": 0.513092,
+    "tokens_per_second": 13642.781,
+    "process_rss_delta_mb": 33.141
+  },
+  "validation": {
+    "batches": 1,
+    "initial_loss": 8.787526,
+    "final_loss": 7.87499,
+    "initial_perplexity": 6552.0033,
+    "final_perplexity": 2630.6598
+  },
+  "compile": {
+    "enabled": false,
+    "backend": null,
+    "wrapper_creation_seconds": null
+  },
+  "profiler": {
+    "chrome_trace": "artifacts/profiler/training_step.json",
+    "operator_table": "artifacts/profiler/training_step.txt"
+  },
+  "saved_model": "artifacts/models/smoke"
+}

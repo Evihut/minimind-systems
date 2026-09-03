@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "baseline": "artifacts/load_test_unbatched.json",
+  "optimized": "artifacts/load_test.json",
+  "requests_per_second_improvement_percent": 227.94,
+  "generated_tokens_per_second_improvement_percent": 227.94,
+  "p95_latency_reduction_percent": 72.05,
+  "p95_ttft_change_percent": -94.94,
+  "baseline_summary": {
+    "successful_requests": 100,
+    "failed_requests": 0,
+    "wall_seconds": 1.2549,
+    "requests_per_second": 79.686,
+    "generated_tokens_per_second": 2549.958,
+    "latency_mean_ms": 96.902,
+    "latency_p50_ms": 99.29,
+    "latency_p95_ms": 108.077,
+    "latency_p99_ms": 109.0,
+    "ttft_p50_ms": 87.289,
+    "ttft_p95_ms": 95.875
+  },
+  "optimized_summary": {
+    "successful_requests": 100,
+    "failed_requests": 0,
+    "wall_seconds": 0.3827,
+    "requests_per_second": 261.324,
+    "generated_tokens_per_second": 8362.353,
+    "latency_mean_ms": 28.635,
+    "latency_p50_ms": 28.419,
+    "latency_p95_ms": 30.212,
+    "latency_p99_ms": 33.251,
+    "ttft_p50_ms": 3.775,
+    "ttft_p95_ms": 4.851
+  }
+}

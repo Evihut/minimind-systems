@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "minimind-portfolio"
+version = "0.2.0"
+description = "MiniMind training, benchmarking, and inference optimization platform"
+readme = "README_PORTFOLIO.md"
+requires-python = ">=3.10,<3.14"
+license = { file = "LICENSE" }
+dependencies = [
+  "psutil>=5.9,<8",
+  "torch>=2.2",
+  "transformers>=4.45,<6",
+]
+
+[project.optional-dependencies]
+dev = [
+  "fastapi>=0.115,<1",
+  "httpx>=0.28,<1",
+  "prometheus-client>=0.21,<1",
+  "pytest>=8,<10",
+  "ruff>=0.9,<1",
+  "uvicorn>=0.34,<1",
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+include = ["benchmarks*", "dataset*", "model*", "portfolio*", "serving*", "trainer*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+exclude = ["trainer", "dataset", "scripts", "eval_llm.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

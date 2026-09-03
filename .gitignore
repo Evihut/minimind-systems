@@ -1,0 +1,33 @@
+__pycache__/
+*.pyc
+.DS_Store
+out
+website/
+docs-minimind/
+
+# Local development and private configuration; portfolio publication changes.
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+agent.md
+
+# Keep reproducible summaries, not generated weights or machine-local traces.
+artifacts/models/
+artifacts/profiler/*.json
+checkpoints/
+minimind-3/
+*.pt
+*.pth
+*.safetensors
+*.gguf
+dataset/*.jsonl
+artifacts/ci-*.json

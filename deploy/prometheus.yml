@@ -1,0 +1,8 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: minimind-api
+    static_configs:
+      - targets: ["minimind-api:8998"]
+

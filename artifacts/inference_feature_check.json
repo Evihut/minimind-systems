@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "environment": {
+    "python": "3.13.5",
+    "torch": "2.12.1",
+    "transformers": "5.12.1",
+    "platform": "macOS-26.6-arm64-arm-64bit-Mach-O",
+    "device": "cpu",
+    "accelerator": null
+  },
+  "model": {
+    "preset": {
+      "hidden_size": 64,
+      "num_hidden_layers": 2,
+      "num_attention_heads": 4,
+      "num_key_value_heads": 2
+    },
+    "parameters": 532864,
+    "parameters_millions": 0.5329,
+    "estimated_fp32_size_mb": 2.033
+  },
+  "workload": {
+    "prompt_tokens": 16,
+    "max_new_tokens": 16,
+    "warmup_requests": 1,
+    "measured_requests": 2,
+    "batch_size": 1,
+    "decoding": "greedy"
+  },
+  "variants": [
+    {
+      "variant": "no_cache",
+      "cache_mode": "none",
+      "warmup_requests": 1,
+      "measured_requests": 2,
+      "generated_tokens": 32,
+      "throughput_tokens_per_second": 2571.684,
+      "ttft_p50_ms": 0.376,
+      "ttft_p95_ms": 0.382,
+      "request_latency_p50_ms": 6.222,
+      "request_latency_p95_ms": 6.284,
+      "inter_token_latency_p50_ms": 0.383,
+      "inter_token_latency_p95_ms": 0.418,
+      "request_latency_mean_ms": 6.222,
+      "process_rss_delta_mb": 0.016
+    },
+    {
+      "variant": "dynamic_cache",
+      "cache_mode": "dynamic",
+      "warmup_requests": 1,
+      "measured_requests": 2,
+      "generated_tokens": 32,
+      "throughput_tokens_per_second": 3488.879,
+      "ttft_p50_ms": 0.354,
+      "ttft_p95_ms": 0.354,
+      "request_latency_p50_ms": 4.586,
+      "request_latency_p95_ms": 4.641,
+      "inter_token_latency_p50_ms": 0.279,
+      "inter_token_latency_p95_ms": 0.294,
+      "request_latency_mean_ms": 4.586,
+      "process_rss_delta_mb": 0.016
+    },
+    {
+      "variant": "static_cache",
+      "cache_mode": "static",
+      "warmup_requests": 1,
+      "measured_requests": 2,
+      "generated_tokens": 32,
+      "throughput_tokens_per_second": 3421.27,
+      "ttft_p50_ms": 0.392,
+      "ttft_p95_ms": 0.396,
+      "request_latency_p50_ms": 4.677,
+      "request_latency_p95_ms": 4.699,
+      "inter_token_latency_p50_ms": 0.286,
+      "inter_token_latency_p95_ms": 0.295,
+      "request_latency_mean_ms": 4.677,
+      "process_rss_delta_mb": 0.031,
+      "kv_cache_allocated_mb": 0.015625,
+      "cache_buffer_reused": true
+    },
+    {
+      "variant": "compiled_aot_eager",
+      "cache_mode": "dynamic",
+      "warmup_requests": 1,
+      "measured_requests": 2,
+      "generated_tokens": 32,
+      "throughput_tokens_per_second": 2058.976,
+      "ttft_p50_ms": 0.585,
+      "ttft_p95_ms": 0.594,
+      "request_latency_p50_ms": 7.771,
+      "request_latency_p95_ms": 7.905,
+      "inter_token_latency_p50_ms": 0.483,
+      "inter_token_latency_p95_ms": 0.491,
+      "request_latency_mean_ms": 7.771,
+      "process_rss_delta_mb": 0.0
+    }
+  ],
+  "correctness_matches_no_cache": {
+    "no_cache": true,
+    "dynamic_cache": true,
+    "static_cache": true,
+    "compiled_aot_eager": true
+  },
+  "comparisons": {
+    "dynamic_vs_no_cache": {
+      "throughput_speedup_x": 1.357,
+      "throughput_improvement_percent": 35.67,
+      "p95_latency_reduction_percent": 26.15
+    },
+    "static_vs_dynamic": {
+      "throughput_speedup_x": 0.981,
+      "throughput_improvement_percent": -1.94,
+      "p95_latency_reduction_percent": -1.25
+    },
+    "static_vs_no_cache": {
+      "throughput_speedup_x": 1.33,
+      "throughput_improvement_percent": 33.04,
+      "p95_latency_reduction_percent": 25.22
+    }
+  },
+  "compile": {
+    "backend": "aot_eager",
+    "compile_and_first_request_seconds": 1.51
+  },
+  "quantization": {
+    "status": "skipped",
+    "reason": "Didn't find engine for operation quantized::linear_prepack NoQEngine",
+    "recommendation": "Install torchao and use a build with a supported CPU/GPU quantization backend."
+  }
+}

@@ -1,0 +1,11 @@
+.git
+.github
+__pycache__
+*.pyc
+artifacts
+checkpoints
+dataset/*.jsonl
+minimind-3
+out
+tests
+

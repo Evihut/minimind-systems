@@ -1,0 +1,27 @@
+services:
+  minimind-api:
+    build:
+      context: .
+    ports:
+      - "8998:8998"
+    environment:
+      MODEL_ROOT: /models
+      DEVICE: cuda
+      MAX_BATCH_SIZE: 8
+      MAX_BATCH_WAIT_MS: 2
+      MAX_QUEUE_SIZE: 256
+      MODEL_CACHE_SIZE: 2
+    volumes:
+      - ./minimind-3:/models/minimind-3:ro
+    gpus: all
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command: ["--config.file=/etc/prometheus/prometheus.yml"]
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - minimind-api

@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "environment": {
+    "python": "3.13.5",
+    "torch": "2.12.1",
+    "transformers": "5.12.1",
+    "platform": "macOS-26.6-arm64-arm-64bit-Mach-O",
+    "device": "cpu",
+    "accelerator": null
+  },
+  "model": {
+    "preset": {
+      "hidden_size": 64,
+      "num_hidden_layers": 2,
+      "num_attention_heads": 4,
+      "num_key_value_heads": 2
+    },
+    "parameters": 532864,
+    "parameters_millions": 0.5329,
+    "estimated_fp32_size_mb": 2.033
+  },
+  "workload": {
+    "prompt_tokens": 32,
+    "max_new_tokens": 64,
+    "warmup_requests": 2,
+    "measured_requests": 5,
+    "batch_size": 1,
+    "decoding": "greedy"
+  },
+  "variants": [
+    {
+      "variant": "no_cache",
+      "cache_mode": "none",
+      "warmup_requests": 2,
+      "measured_requests": 5,
+      "generated_tokens": 320,
+      "throughput_tokens_per_second": 1932.269,
+      "ttft_p50_ms": 0.44,
+      "ttft_p95_ms": 0.463,
+      "request_latency_p50_ms": 33.366,
+      "request_latency_p95_ms": 33.539,
+      "inter_token_latency_p50_ms": 0.512,
+      "inter_token_latency_p95_ms": 0.639,
+      "request_latency_mean_ms": 33.122,
+      "process_rss_delta_mb": 0.016
+    },
+    {
+      "variant": "dynamic_cache",
+      "cache_mode": "dynamic",
+      "warmup_requests": 2,
+      "measured_requests": 5,
+      "generated_tokens": 320,
+      "throughput_tokens_per_second": 3360.412,
+      "ttft_p50_ms": 0.434,
+      "ttft_p95_ms": 0.473,
+      "request_latency_p50_ms": 18.786,
+      "request_latency_p95_ms": 19.563,
+      "inter_token_latency_p50_ms": 0.293,
+      "inter_token_latency_p95_ms": 0.317,
+      "request_latency_mean_ms": 19.045,
+      "process_rss_delta_mb": 0.0
+    },
+    {
+      "variant": "static_cache",
+      "cache_mode": "static",
+      "warmup_requests": 2,
+      "measured_requests": 5,
+      "generated_tokens": 320,
+      "throughput_tokens_per_second": 3364.101,
+      "ttft_p50_ms": 0.439,
+      "ttft_p95_ms": 0.45,
+      "request_latency_p50_ms": 18.897,
+      "request_latency_p95_ms": 19.344,
+      "inter_token_latency_p50_ms": 0.294,
+      "inter_token_latency_p95_ms": 0.313,
+      "request_latency_mean_ms": 19.024,
+      "process_rss_delta_mb": 0.016,
+      "kv_cache_allocated_mb": 0.046875,
+      "cache_buffer_reused": true
+    }
+  ],
+  "correctness_matches_no_cache": {
+    "no_cache": true,
+    "dynamic_cache": true,
+    "static_cache": true
+  },
+  "comparisons": {
+    "dynamic_vs_no_cache": {
+      "throughput_speedup_x": 1.739,
+      "throughput_improvement_percent": 73.91,
+      "p95_latency_reduction_percent": 41.67
+    },
+    "static_vs_dynamic": {
+      "throughput_speedup_x": 1.001,
+      "throughput_improvement_percent": 0.11,
+      "p95_latency_reduction_percent": 1.12
+    },
+    "static_vs_no_cache": {
+      "throughput_speedup_x": 1.741,
+      "throughput_improvement_percent": 74.1,
+      "p95_latency_reduction_percent": 42.32
+    }
+  },
+  "compile": null,
+  "quantization": null,
+  "profiler": {
+    "none": {
+      "chrome_trace": "artifacts/profiler/decode_none.json",
+      "operator_table": "artifacts/profiler/decode_none.txt"
+    },
+    "dynamic": {
+      "chrome_trace": "artifacts/profiler/decode_dynamic.json",
+      "operator_table": "artifacts/profiler/decode_dynamic.txt"
+    },
+    "static": {
+      "chrome_trace": "artifacts/profiler/decode_static.json",
+      "operator_table": "artifacts/profiler/decode_static.txt"
+    }
+  }
+}

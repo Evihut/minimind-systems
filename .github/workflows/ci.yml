@@ -1,0 +1,29 @@
+name: quality
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install test dependencies
+        run: pip install "torch>=2.2" "transformers>=4.45,<6" "fastapi>=0.115,<1" "httpx>=0.28,<1" "prometheus-client>=0.21,<1" "psutil>=5.9,<8" "uvicorn>=0.34,<1" "pytest>=8,<10" "ruff>=0.9,<1"
+      - name: Lint portfolio additions
+        run: python -m ruff check benchmarks model/cache.py portfolio serving scripts/api_schema.py tests tools
+      - name: Run tests
+        run: python -m pytest
+      - name: Run five-step training smoke test
+        run: python -m portfolio.smoke_pipeline --device cpu --steps 5 --min-loss-reduction 0.1 --output artifacts/ci-smoke-report.json
+      - name: Run KV-cache benchmark smoke test
+        run: python -m benchmarks.inference_benchmark --device cpu --prompt-tokens 8 --max-new-tokens 4 --warmup 0 --repeats 1 --output artifacts/ci-inference-report.json

@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "config": {
+    "steps": 20,
+    "batch_size": 8,
+    "sequence_length": 48,
+    "hidden_size": 64,
+    "num_hidden_layers": 2,
+    "learning_rate": 0.003,
+    "seed": 2026,
+    "generation_tokens": 16
+  },
+  "environment": {
+    "python": "3.13.5",
+    "torch": "2.12.1",
+    "transformers": "5.12.1",
+    "platform": "macOS-26.6-arm64-arm-64bit-Mach-O",
+    "device": "cpu"
+  },
+  "model": {
+    "parameters": 532864,
+    "parameters_millions": 0.5329,
+    "estimated_fp32_size_mb": 2.033
+  },
+  "training": {
+    "initial_loss": 8.787673,
+    "final_loss": 3.330214,
+    "loss_reduction_percent": 62.104,
+    "training_seconds": 0.204212,
+    "tokens_per_second": 14592.705
+  },
+  "inference": {
+    "generated_tokens": 16,
+    "generation_seconds": 0.006854,
+    "decode_tokens_per_second": 2334.488,
+    "sample": "MiniMind a a compact language model built with native PyTor"
+  }
+}
