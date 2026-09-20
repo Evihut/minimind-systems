@@ -48,6 +48,9 @@ python -m benchmarks.inference_benchmark --device cpu --profile --output /tmp/mi
 python -m benchmarks.training_benchmark --device cpu --save-model artifacts/models/smoke --output /tmp/minimind-training.json
 ```
 
+For the resumable, budget-capped CUDA matrix, follow the
+[GPU rental runbook](docs/GPU_RUNBOOK.md) before opening a paid instance.
+
 The second command creates a tiny demo model locally; it is not a useful chat model. Weights and raw profiler traces are intentionally not committed.
 
 Serve it:

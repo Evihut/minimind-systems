@@ -36,6 +36,12 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def suite_compile_backend(device: str, requested: str | None) -> str:
+    if requested:
+        return requested
+    return "inductor" if device.startswith("cuda") else "aot_eager"
+
+
 @dataclass
 class Cell:
     """A single experiment: one subprocess, one JSON report."""
@@ -168,10 +174,28 @@ def build_plan(args: argparse.Namespace) -> list[Cell]:
                 )
             )
 
-    # --- Group 3: short pretrain + SFT on real data ------------------------ #
+    # --- Group 3: short pretrain on real data ------------------------------ #
     # Refused rather than silently downgraded: the built-in corpus is 32
     # repeated sentences, so its perplexity says nothing about model quality.
-    missing_data = args.train_data is None or not Path(args.train_data).exists()
+    train_path = Path(args.train_data).resolve() if args.train_data is not None else None
+    validation_path = (
+        Path(args.validation_data).resolve() if args.validation_data is not None else None
+    )
+    if train_path is None or not train_path.exists():
+        pipeline_skip_reason = (
+            "--train-data not provided or missing; refusing to report perplexity "
+            "from the 32-sentence built-in corpus"
+        )
+    elif validation_path is None or not validation_path.exists():
+        pipeline_skip_reason = (
+            "--validation-data not provided or missing; held-out validation is required"
+        )
+    elif validation_path == train_path:
+        pipeline_skip_reason = (
+            "--validation-data must be a different file from --train-data to prevent leakage"
+        )
+    else:
+        pipeline_skip_reason = None
     pipeline_output = root / "pipeline" / "pretrain.json"
     cells.append(
         Cell(
@@ -190,19 +214,14 @@ def build_plan(args: argparse.Namespace) -> list[Cell]:
                     "--batch-size": args.batch_size,
                     "--sequence-length": seq_len,
                     "--train-data": args.train_data,
-                    "--validation-data": args.validation_data or args.train_data,
+                    "--validation-data": args.validation_data,
                     "--text-field": args.text_field,
                     "--save-model": root / "pipeline" / "checkpoint",
                     "--output": pipeline_output,
                 },
             ),
             output=pipeline_output,
-            skip_reason=(
-                "--train-data not provided or missing; refusing to report perplexity "
-                "from the 32-sentence built-in corpus"
-                if missing_data
-                else None
-            ),
+            skip_reason=pipeline_skip_reason,
             estimated_seconds=600.0,
         )
     )
@@ -349,7 +368,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--precision", choices=["fp32", "bf16", "fp16"], default="bf16")
     parser.add_argument("--attn", choices=["manual", "sdpa"], default="sdpa")
     parser.add_argument("--groups", nargs="+", choices=GROUPS, default=["compile", "kvcache", "pipeline"])
-    parser.add_argument("--compile-backend", default="inductor")
+    parser.add_argument(
+        "--compile-backend",
+        default=None,
+        help="defaults to inductor on CUDA and aot_eager for CPU rehearsal",
+    )
     parser.add_argument("--steps", type=int, default=50)
     parser.add_argument("--warmup-steps", type=int, default=5)
     parser.add_argument("--batch-size", type=int, default=8)
@@ -379,6 +402,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    args.compile_backend = suite_compile_backend(args.device, args.compile_backend)
     if args.quick and args.preset == "64m":
         args.preset = "smoke"
     plan = build_plan(args)

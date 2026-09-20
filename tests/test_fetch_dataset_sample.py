@@ -4,9 +4,10 @@ The network call itself is not exercised here; the parsing of a byte prefix is,
 because that is where a truncated download turns into corrupt training data.
 """
 
+import io
 import json
 
-from tools.fetch_dataset_sample import complete_records, download_url, write_jsonl
+from tools.fetch_dataset_sample import complete_records, download_url, fetch_prefix, write_jsonl
 
 
 def encode(records: list[dict]) -> bytes:
@@ -58,6 +59,23 @@ def test_download_url_targets_the_dataset_repo():
         "https://www.modelscope.cn/api/v1/datasets/gongjy/minimind_dataset/repo"
         "?Revision=master&FilePath=pretrain_t2t_mini.jsonl"
     )
+
+
+def test_fetch_prefix_stays_bounded_when_server_ignores_range(monkeypatch):
+    class Response(io.BytesIO):
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.close()
+
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda request, timeout: Response(b"0123456789"),
+    )
+    assert fetch_prefix("https://example.invalid/data", byte_count=4, timeout=1) == b"0123"
 
 
 def test_write_jsonl_round_trips_unicode(tmp_path):

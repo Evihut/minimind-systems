@@ -1,4 +1,4 @@
-.PHONY: help test lint smoke benchmark-inference benchmark-training gpu-suite gpu-suite-plan gpu-suite-rehearse dataset-sample verify
+.PHONY: help setup-gpu test lint smoke benchmark-inference benchmark-training gpu-suite gpu-suite-plan gpu-suite-rehearse dataset-sample verify
 
 PYTHON ?= python3
 DEVICE ?= cpu
@@ -6,6 +6,7 @@ DEVICE ?= cpu
 help:
 	@echo "make test    - run the CPU test suite"
 	@echo "make lint    - lint portfolio code and tests"
+	@echo "make setup-gpu - install the project and verification dependencies"
 	@echo "make smoke   - run the end-to-end tiny training pipeline"
 	@echo "make benchmark-inference - compare no/dynamic/static KV cache"
 	@echo "make benchmark-training  - run the controlled training benchmark"
@@ -15,11 +16,14 @@ help:
 	@echo "make dataset-sample     - fetch a small real corpus prefix from ModelScope"
 	@echo "make verify  - run lint, tests, and smoke validation"
 
+setup-gpu:
+	$(PYTHON) -m pip install -e '.[dev]'
+
 test:
 	$(PYTHON) -m pytest
 
 lint:
-	uvx ruff check benchmarks model/cache.py portfolio serving scripts/api_schema.py tests tools
+	$(PYTHON) -m ruff check benchmarks model/cache.py portfolio serving scripts/api_schema.py tests tools
 
 smoke:
 	$(PYTHON) -m portfolio.smoke_pipeline --device $(DEVICE)
@@ -37,17 +41,20 @@ GPU_BUDGET ?= 360
 SAMPLES ?= 20000
 HOLDOUT ?= 2000
 TRAIN_DATA ?=
+VALIDATION_DATA ?=
 
 dataset-sample:
 	$(PYTHON) -m tools.fetch_dataset_sample --samples $(SAMPLES) --holdout $(HOLDOUT)
 
 gpu-suite:
 	$(PYTHON) -m benchmarks.gpu_suite --device $(GPU_DEVICE) --time-budget-minutes $(GPU_BUDGET) \
-		$(if $(TRAIN_DATA),--train-data $(TRAIN_DATA))
+		$(if $(TRAIN_DATA),--train-data $(TRAIN_DATA)) \
+		$(if $(VALIDATION_DATA),--validation-data $(VALIDATION_DATA))
 
 gpu-suite-plan:
 	$(PYTHON) -m benchmarks.gpu_suite --device $(GPU_DEVICE) --dry-run \
-		$(if $(TRAIN_DATA),--train-data $(TRAIN_DATA))
+		$(if $(TRAIN_DATA),--train-data $(TRAIN_DATA)) \
+		$(if $(VALIDATION_DATA),--validation-data $(VALIDATION_DATA))
 
 gpu-suite-rehearse:
 	$(PYTHON) -m benchmarks.gpu_suite --device cpu --quick

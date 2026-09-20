@@ -104,6 +104,35 @@ def test_static_cache_first_prefill_uses_the_same_attention_path():
     assert static_cache.position == input_ids.shape[1]
 
 
+def test_sdpa_cached_decode_matches_full_forward():
+    torch.manual_seed(15)
+    model = MiniMindForCausalLM(tiny_config(flash_attn=True)).eval()
+    input_ids = torch.randint(0, 128, (2, 9))
+
+    with torch.inference_mode():
+        full_logits = model(input_ids).logits[:, -1]
+        prefix = model(input_ids[:, :-1], use_cache=True)
+        cached_logits = model(
+            input_ids[:, -1:],
+            past_key_values=prefix.past_key_values,
+            use_cache=True,
+        ).logits[:, -1]
+        static_cache = StaticKVCache(
+            num_hidden_layers=model.config.num_hidden_layers,
+            max_cache_len=input_ids.shape[1],
+            batch_size=input_ids.shape[0],
+        )
+        model(input_ids[:, :-1], past_key_values=static_cache, use_cache=True)
+        static_logits = model(
+            input_ids[:, -1:],
+            past_key_values=static_cache,
+            use_cache=True,
+        ).logits[:, -1]
+
+    torch.testing.assert_close(cached_logits, full_logits, rtol=1e-4, atol=1e-5)
+    torch.testing.assert_close(static_logits, cached_logits, rtol=1e-4, atol=1e-5)
+
+
 def test_moe_routes_tokens_and_backpropagates_auxiliary_loss():
     torch.manual_seed(13)
     model = MiniMindForCausalLM(

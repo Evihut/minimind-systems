@@ -179,8 +179,23 @@ class Attention(nn.Module):
             xv = torch.cat([past_key_value[1], xv], dim=1)
         past_kv = past_key_value if isinstance(past_key_value, StaticKVCache) else ((xk, xv) if use_cache else None)
         xq, xk, xv = (xq.transpose(1, 2), repeat_kv(xk, self.n_rep).transpose(1, 2), repeat_kv(xv, self.n_rep).transpose(1, 2))
-        if self.flash and (seq_len > 1) and (not self.is_causal or not has_past_tokens) and (attention_mask is None or torch.all(attention_mask == 1)):
-            output = F.scaled_dot_product_attention(xq, xk, xv, dropout_p=self.dropout if self.training else 0.0, is_causal=self.is_causal)
+        use_sdpa = (
+            self.flash
+            and (not has_past_tokens or seq_len == 1)
+            and (attention_mask is None or torch.all(attention_mask == 1))
+        )
+        if use_sdpa:
+            # A one-token cached query is already at the final position and may
+            # attend every cached key. ``is_causal=True`` would construct an
+            # upper-left mask and incorrectly restrict it to the first key.
+            sdpa_is_causal = self.is_causal and not has_past_tokens
+            output = F.scaled_dot_product_attention(
+                xq,
+                xk,
+                xv,
+                dropout_p=self.dropout if self.training else 0.0,
+                is_causal=sdpa_is_causal,
+            )
         else:
             scores = (xq @ xk.transpose(-2, -1)) / math.sqrt(self.head_dim)
             if self.is_causal: scores[:, :, :, -seq_len:] += torch.full((seq_len, seq_len), float("-inf"), device=scores.device).triu(1)

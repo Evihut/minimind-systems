@@ -212,6 +212,12 @@ def main() -> int:
         raise SystemExit("warmup steps must be non-negative")
     if args.precision == "fp16" and args.device == "cpu":
         raise SystemExit("fp16 training is not supported on CPU; use fp32 or bf16")
+    if (
+        args.train_data is not None
+        and args.validation_data is not None
+        and args.train_data.resolve() == args.validation_data.resolve()
+    ):
+        raise SystemExit("training and validation data must be different files")
 
     torch.manual_seed(2026)
     device, rank, _, world_size = setup_distributed(args.device)
@@ -280,6 +286,12 @@ def main() -> int:
     )
     attention = attention_metadata(model, args.attn)
     base_model = model
+    # Measure the initial validation loss before wrapping the model with
+    # torch.compile. Otherwise the first evaluation silently pays an unreported
+    # compile cost and ``first_step_seconds`` cannot describe training startup.
+    initial_validation_loss, validation_batches = evaluate(
+        base_model, validation_loader, device, args.precision
+    )
     compile_seconds = None
     if args.compile:
         started = time.perf_counter()
@@ -293,10 +305,6 @@ def main() -> int:
     optimizer = AdamW(model.parameters(), lr=args.learning_rate)
     scaler = torch.amp.GradScaler(
         "cuda", enabled=args.precision == "fp16" and device.type == "cuda"
-    )
-
-    initial_validation_loss, validation_batches = evaluate(
-        model, validation_loader, device, args.precision
     )
     model.train()
     losses = []
@@ -389,7 +397,12 @@ def main() -> int:
             "validation_samples": len(validation_dataset),
             "sequence_length": args.sequence_length,
             "source": "jsonl" if args.train_data else "built-in engineering corpus",
+            "train_source": "jsonl" if args.train_data else "built-in engineering corpus",
+            "validation_source": (
+                "jsonl" if args.validation_data else "built-in engineering corpus"
+            ),
             "corpus_is_toy": args.train_data is None,
+            "validation_is_toy": args.validation_data is None,
         },
         "training": {
             "steps": args.steps,
@@ -419,11 +432,12 @@ def main() -> int:
             "final_perplexity": round(math.exp(min(final_validation_loss, 20)), 4),
             # The built-in corpus is 32 repeated sentences; perplexity on it
             # measures that the training loop runs, not that the model is good.
-            "perplexity_is_indicative_only": args.train_data is None,
+            "perplexity_is_indicative_only": args.validation_data is None,
         },
         "compile": {
             "enabled": args.compile,
             "backend": compile_backend if args.compile else None,
+            "initial_validation_before_compile": True,
             "wrapper_creation_seconds": round(compile_seconds, 6) if compile_seconds is not None else None,
             "first_step_seconds": round(first_step_seconds, 6) if first_step_seconds is not None else None,
             "warmup_seconds": round(warmup_seconds, 6),

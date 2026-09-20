@@ -4,7 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from benchmarks.gpu_suite import Cell, build_plan, is_complete, load_manifest, save_manifest
+from benchmarks.gpu_suite import (
+    Cell,
+    build_plan,
+    is_complete,
+    load_manifest,
+    save_manifest,
+    suite_compile_backend,
+)
 
 
 def make_args(**overrides) -> argparse.Namespace:
@@ -67,11 +74,30 @@ def test_pipeline_is_skipped_rather_than_run_on_the_toy_corpus():
 
 
 def test_pipeline_runs_once_real_data_exists(tmp_path):
-    data = tmp_path / "train.jsonl"
-    data.write_text('{"text": "hello"}\n', encoding="utf-8")
-    (cell,) = build_plan(make_args(groups=["pipeline"], train_data=data))
+    train = tmp_path / "train.jsonl"
+    validation = tmp_path / "validation.jsonl"
+    train.write_text('{"text": "hello"}\n', encoding="utf-8")
+    validation.write_text('{"text": "held out"}\n', encoding="utf-8")
+    (cell,) = build_plan(
+        make_args(groups=["pipeline"], train_data=train, validation_data=validation)
+    )
     assert cell.skip_reason is None
-    assert str(data) in " ".join(str(part) for part in cell.command)
+    rendered = " ".join(str(part) for part in cell.command)
+    assert str(train) in rendered
+    assert str(validation) in rendered
+
+
+def test_pipeline_requires_a_separate_holdout(tmp_path):
+    train = tmp_path / "train.jsonl"
+    train.write_text('{"text": "hello"}\n', encoding="utf-8")
+
+    (missing,) = build_plan(make_args(groups=["pipeline"], train_data=train))
+    assert "held-out validation is required" in missing.skip_reason
+
+    (leaked,) = build_plan(
+        make_args(groups=["pipeline"], train_data=train, validation_data=train)
+    )
+    assert "prevent leakage" in leaked.skip_reason
 
 
 def test_compile_group_pairs_eager_against_the_chosen_backend():
@@ -80,6 +106,13 @@ def test_compile_group_pairs_eager_against_the_chosen_backend():
     eager, compiled = (" ".join(str(part) for part in cell.command) for cell in cells)
     assert "--compile" not in eager
     assert "--compile --compile-backend inductor" in compiled
+
+
+def test_compile_backend_is_safe_for_rehearsal_and_real_for_cuda():
+    assert suite_compile_backend("cpu", None) == "aot_eager"
+    assert suite_compile_backend("cuda", None) == "inductor"
+    assert suite_compile_backend("cuda:0", None) == "inductor"
+    assert suite_compile_backend("cpu", "eager") == "eager"
 
 
 def test_ddp_cells_pin_the_global_batch_for_strong_scaling():

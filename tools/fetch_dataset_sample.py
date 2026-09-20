@@ -41,7 +41,9 @@ def fetch_prefix(url: str, byte_count: int, timeout: float) -> bytes:
     with urllib.request.urlopen(request, timeout=timeout) as response:
         if response.status not in (200, 206):
             raise RuntimeError(f"unexpected status {response.status} from {url}")
-        return response.read()
+        # Some proxies ignore Range and answer 200 with the full multi-GB file.
+        # Never read beyond the requested prefix into memory or paid runtime.
+        return response.read(byte_count)
 
 
 def complete_records(payload: bytes, limit: int) -> tuple[list[dict], int]:

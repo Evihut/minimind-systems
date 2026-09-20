@@ -6,7 +6,6 @@ import argparse
 import copy
 import statistics
 import time
-from contextlib import nullcontext
 from pathlib import Path
 from typing import Literal
 
@@ -34,12 +33,16 @@ from model.cache import StaticKVCache
 CacheMode = Literal["none", "dynamic", "static"]
 
 
-def autocast_context(device: torch.device, precision: str):
-    """fp32 runs unwrapped so existing reports stay bit-for-bit reproducible."""
-    if precision == "fp32":
-        return nullcontext()
-    dtype = torch.bfloat16 if precision == "bf16" else torch.float16
-    return torch.autocast(device_type=device.type, dtype=dtype)
+def inference_dtype(precision: str) -> torch.dtype:
+    return {
+        "fp32": torch.float32,
+        "bf16": torch.bfloat16,
+        "fp16": torch.float16,
+    }[precision]
+
+
+def dtype_name(dtype: torch.dtype) -> str:
+    return str(dtype).removeprefix("torch.")
 
 
 def first_divergence(left: torch.Tensor, right: torch.Tensor) -> int | None:
@@ -50,6 +53,29 @@ def first_divergence(left: torch.Tensor, right: torch.Tensor) -> int | None:
     if mismatches.numel() == 0:
         return None
     return int(mismatches[0][-1])
+
+
+def correctness_requirements(
+    outputs: dict[str, torch.Tensor],
+    correctness: dict[str, bool],
+    reference: str,
+    precision: str,
+) -> dict[str, bool]:
+    """Return the comparisons that must pass for a benchmark to be valid."""
+    required = {}
+    if "dynamic_cache" in outputs and "static_cache" in outputs:
+        required["static_matches_dynamic"] = bool(
+            torch.equal(outputs["static_cache"], outputs["dynamic_cache"])
+        )
+    if precision == "fp32":
+        required.update(
+            {
+                f"{name}_matches_{reference}": matches
+                for name, matches in correctness.items()
+                if not name.endswith("_int8")
+            }
+        )
+    return required
 
 
 def percentile(values: list[float], quantile: float) -> float:
@@ -70,7 +96,6 @@ def greedy_decode(
     max_new_tokens: int,
     cache_mode: CacheMode,
     reusable_cache: StaticKVCache | None = None,
-    precision: str = "fp32",
 ) -> tuple[torch.Tensor, list[float], StaticKVCache | None]:
     generated = input_ids
     past_key_values = None
@@ -92,12 +117,11 @@ def greedy_decode(
         step_input = generated if cache_mode == "none" or needs_prefill else generated[:, -1:]
         synchronize(input_ids.device)
         started = time.perf_counter()
-        with autocast_context(input_ids.device, precision):
-            output = model(
-                step_input,
-                past_key_values=past_key_values,
-                use_cache=cache_mode != "none",
-            )
+        output = model(
+            step_input,
+            past_key_values=past_key_values,
+            use_cache=cache_mode != "none",
+        )
         next_token = output.logits[:, -1].argmax(dim=-1, keepdim=True)
         synchronize(input_ids.device)
         token_latencies.append(time.perf_counter() - started)
@@ -126,7 +150,7 @@ def benchmark_variant(
             batch_size=input_ids.shape[0],
         )
     for _ in range(warmup):
-        greedy_decode(model, input_ids, max_new_tokens, cache_mode, reusable_cache, precision)
+        greedy_decode(model, input_ids, max_new_tokens, cache_mode, reusable_cache)
 
     request_latencies = []
     ttft_latencies = []
@@ -139,7 +163,7 @@ def benchmark_variant(
         torch.cuda.reset_peak_memory_stats(input_ids.device)
     for _ in range(repeats):
         last_output, token_latencies, last_cache = greedy_decode(
-            model, input_ids, max_new_tokens, cache_mode, reusable_cache, precision
+            model, input_ids, max_new_tokens, cache_mode, reusable_cache
         )
         request_latencies.append(sum(token_latencies))
         ttft_latencies.append(token_latencies[0])
@@ -154,6 +178,7 @@ def benchmark_variant(
         "cache_mode": cache_mode,
         "batch_size": batch_size,
         "precision": precision,
+        "parameter_dtype": dtype_name(next(model.parameters()).dtype),
         "warmup_requests": warmup,
         "measured_requests": repeats,
         "generated_tokens": total_tokens,
@@ -185,6 +210,7 @@ def profile_variant(
     max_new_tokens: int,
     cache_mode: CacheMode,
     trace_path: Path,
+    precision: str,
 ) -> dict:
     activities = [torch.profiler.ProfilerActivity.CPU]
     if input_ids.device.type == "cuda":
@@ -202,7 +228,12 @@ def profile_variant(
     table = profiler.key_averages(group_by_input_shape=True).table(sort_by=sort_key, row_limit=20)
     table_path = trace_path.with_suffix(".txt")
     table_path.write_text(table + "\n", encoding="utf-8")
-    return {"chrome_trace": str(trace_path), "operator_table": str(table_path)}
+    return {
+        "chrome_trace": str(trace_path),
+        "operator_table": str(table_path),
+        "precision": precision,
+        "parameter_dtype": dtype_name(next(model.parameters()).dtype),
+    }
 
 
 def speedup(baseline: dict, optimized: dict) -> dict:
@@ -260,7 +291,7 @@ def main() -> int:
     if min(args.prompt_tokens, args.max_new_tokens, args.repeats) <= 0 or args.warmup < 0:
         raise SystemExit("token counts and repeats must be positive; warmup must be non-negative")
     if args.precision == "fp16" and args.device == "cpu":
-        raise SystemExit("fp16 autocast is not supported on CPU; use fp32 or bf16")
+        raise SystemExit("fp16 inference is not supported on CPU; use fp32 or bf16")
     torch.manual_seed(2026)
     device = resolve_device(args.device)
     compile_backend = args.compile_backend or default_compile_backend(device)
@@ -272,6 +303,11 @@ def main() -> int:
         max_position_embeddings=args.prompt_tokens + args.max_new_tokens + 8,
         attention_implementation=args.attn,
     )
+    # Serving benchmarks load parameters once in their deployment dtype. Using
+    # a fresh autocast context for every token would keep FP32 parameters in
+    # memory and repeatedly rebuild the autocast weight cache, which is neither
+    # representative nor useful for a deployment-memory comparison.
+    model = model.to(dtype=inference_dtype(args.precision))
     # One prompt repeated across the batch keeps every row the same length, so a
     # batch-size sweep varies only the batch dimension.
     encoded = tokenizer(
@@ -356,6 +392,8 @@ def main() -> int:
     if args.include_int8:
         if device.type != "cpu":
             raise SystemExit("dynamic INT8 benchmark currently requires --device cpu")
+        if args.precision != "fp32":
+            raise SystemExit("dynamic INT8 benchmark requires --precision fp32")
         try:
             quantized_model = torch.ao.quantization.quantize_dynamic(
                 copy.deepcopy(model), {nn.Linear}, dtype=torch.qint8
@@ -415,13 +453,10 @@ def main() -> int:
         },
         "variants": variants,
         "precision": args.precision,
+        "parameter_dtype": dtype_name(next(model.parameters()).dtype),
         "correctness_reference": reference,
         "correctness_matches_reference": correctness,
         "first_divergent_token_index": divergence,
-        # Cache modes must agree exactly in fp32. Under autocast, greedy argmax
-        # ties can flip between the recomputed and cached paths, so a late
-        # divergence is expected rather than a defect.
-        "correctness_is_enforced": args.precision == "fp32",
         "comparisons": {
             label: speedup(by_name[base], by_name[other])
             for label, base, other in possible_comparisons
@@ -433,6 +468,11 @@ def main() -> int:
     if reference == "no_cache":
         # Retained so reports written before the batch-size axis stay readable.
         report["correctness_matches_no_cache"] = correctness
+    required_correctness = correctness_requirements(
+        outputs, correctness, reference, args.precision
+    )
+    report["required_correctness"] = required_correctness
+    report["correctness_is_enforced"] = bool(required_correctness)
     if args.profile:
         trace_dir = args.output.parent / "profiler"
         report["profiler"] = {
@@ -442,18 +482,12 @@ def main() -> int:
                 min(args.max_new_tokens, 16),
                 mode,
                 trace_dir / f"decode_{mode}.json",
+                args.precision,
             )
             for mode in ("none", "dynamic", "static")
         }
     write_json_report(args.output, report)
     print(args.output.read_text(encoding="utf-8"))
-    required_correctness = {
-        name: matches
-        for name, matches in correctness.items()
-        if not name.endswith("_int8")
-    }
-    if args.precision != "fp32":
-        return 0
     return 0 if all(required_correctness.values()) else 1
 
 

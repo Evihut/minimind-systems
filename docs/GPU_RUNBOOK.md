@@ -1,9 +1,10 @@
 # GPU runbook
 
 A short, budget-capped GPU session that produces the CUDA evidence the CPU
-benchmarks cannot. Designed for one rental of roughly 6–8 hours on a single
-RTX 4090; everything below is rehearsed locally first so no paid time is spent
-debugging scripts.
+benchmarks cannot. Designed for one on-demand rental of roughly 2–3 hours on a
+single RTX 4090; the suite's printed estimate is a rough planning value, not a
+measurement. Everything below is rehearsed locally first so paid time is not
+spent debugging scripts.
 
 ## 0. Rehearse locally (free)
 
@@ -14,9 +15,12 @@ make gpu-suite-rehearse
 This runs the entire suite on CPU with the `smoke` preset in well under a
 minute. It exercises the same code paths the GPU run will use: subprocess
 launch, JSON reports, the manifest, resume, and the skip logic. Fix anything
-that fails here, not on a metered box.
+that fails here, not on a metered box. CPU rehearsal uses `aot_eager` because
+macOS Inductor is not a reliable prerequisite; a CUDA plan defaults to the
+real `inductor` backend.
 
-Preview the real plan without running it:
+Preview the compute-only plan without running it. The pipeline cell remains
+skipped until the train and holdout files are supplied in step 2:
 
 ```bash
 make gpu-suite-plan GPU_DEVICE=cuda
@@ -76,12 +80,33 @@ with `--train-data` directly; the tool prints that fallback on failure.
 
 ## 2. On the rented box
 
+After cloning the branch, install the project and verification dependencies.
+This also installs `pytest` and `ruff`; they are required by `make verify` and
+must not be assumed to exist in a stock GPU image.
+
 ```bash
-python -m benchmarks.gpu_suite \
-  --device cuda \
-  --time-budget-minutes 360 \
-  --train-data dataset/pretrain_t2t_mini_train.jsonl \
-  --validation-data dataset/pretrain_t2t_mini_holdout.jsonl
+make setup-gpu
+make verify
+make gpu-suite-rehearse
+make dataset-sample
+```
+
+Preview the paid plan with both sides of the train/validation split. The
+pipeline cell refuses to run if either file is missing or both paths identify
+the same file.
+
+```bash
+make gpu-suite-plan GPU_DEVICE=cuda \
+  TRAIN_DATA=dataset/pretrain_t2t_mini_train.jsonl \
+  VALIDATION_DATA=dataset/pretrain_t2t_mini_holdout.jsonl
+```
+
+Then run with a three-hour launch budget:
+
+```bash
+make gpu-suite GPU_DEVICE=cuda GPU_BUDGET=180 \
+  TRAIN_DATA=dataset/pretrain_t2t_mini_train.jsonl \
+  VALIDATION_DATA=dataset/pretrain_t2t_mini_holdout.jsonl
 ```
 
 The suite stops launching new cells once the budget is reached, so an overrun
@@ -106,15 +131,21 @@ instead of passing off a stale number.
 
 | Group | Question | Key fields |
 |---|---|---|
-| `compile` | Does Inductor beat eager on a 64M model, and how long until it pays for itself? | `training.tokens_per_second`, `training.step_seconds_p50_ms` / `p95`, `compile.first_step_seconds`, `compile.warmup_seconds`, `training.peak_gpu_memory_mb` |
+| `compile` | Does Inductor beat eager on a 64M model, and what training startup cost does it add? | `training.tokens_per_second`, `training.step_seconds_p50_ms` / `p95`, `compile.first_step_seconds`, `compile.warmup_seconds`, `training.peak_gpu_memory_mb` |
 | `kvcache` | How do dynamic and static caches compare as context and batch grow? | `throughput_tokens_per_second`, `ttft_p50_ms`, `inter_token_latency_p95_ms`, `kv_cache_allocated_mb`, `peak_gpu_memory_mb` |
 | `pipeline` | Does the training path actually learn on real text? | `validation.initial_loss` vs `final_loss`, `corpus_is_toy: false` |
 
-Warmup steps are excluded from the timed window, so Inductor's compile cost
-shows up in `compile.first_step_seconds` instead of quietly depressing the
+Initial validation runs before the model is compiled. Warmup steps are excluded
+from the timed window, so Inductor's training compile cost shows up in
+`compile.first_step_seconds` instead of quietly depressing the steady-state
 throughput average. The `kvcache` matrix runs `no_cache` only in the smallest
-cell, which serves as the correctness anchor — the quadratic baseline is not
-worth paying for at every point.
+cell; Dynamic and Static Cache equivalence remains a required check in BF16 at
+every point.
+
+Inference parameters are loaded in the requested deployment dtype rather than
+kept in FP32 behind per-token autocast. Reports record both `precision` and
+`parameter_dtype`. The SDPA path supports both prefill and one-token cached
+decode; chunked cached decode still falls back to the manual path.
 
 ## 4. DDP (optional, lowest priority)
 
