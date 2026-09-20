@@ -14,9 +14,13 @@ import torch
 from torch import nn
 
 from benchmarks.common import (
+    ATTENTION_IMPLEMENTATIONS,
     MODEL_PRESETS,
     PROJECT_ROOT,
+    attention_metadata,
     build_model,
+    default_attention_implementation,
+    default_compile_backend,
     environment_metadata,
     load_tokenizer,
     model_metadata,
@@ -120,11 +124,13 @@ def benchmark_variant(
         inter_token_latencies.extend(token_latencies[1:])
     rss_after = process.memory_info().rss
 
-    total_tokens = repeats * max_new_tokens
+    batch_size = input_ids.shape[0]
+    total_tokens = repeats * max_new_tokens * batch_size
     total_seconds = sum(request_latencies)
     result = {
         "variant": name,
         "cache_mode": cache_mode,
+        "batch_size": batch_size,
         "warmup_requests": warmup,
         "measured_requests": repeats,
         "generated_tokens": total_tokens,
@@ -197,11 +203,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--prompt", default="MiniMind 是一个小型语言模型。")
     parser.add_argument("--prompt-tokens", type=int, default=32)
+    parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--max-new-tokens", type=int, default=64)
     parser.add_argument("--warmup", type=int, default=3)
     parser.add_argument("--repeats", type=int, default=10)
+    parser.add_argument(
+        "--attn",
+        choices=ATTENTION_IMPLEMENTATIONS,
+        default=default_attention_implementation(),
+        help="attention path to benchmark (default preserves published CPU results)",
+    )
+    parser.add_argument(
+        "--variants",
+        default="no_cache,dynamic_cache,static_cache",
+        help="comma-separated subset of no_cache,dynamic_cache,static_cache",
+    )
     parser.add_argument("--include-compile", action="store_true")
-    parser.add_argument("--compile-backend", default="aot_eager")
+    parser.add_argument("--compile-backend", default=None,
+                        help="torch.compile backend; defaults to inductor on CUDA, aot_eager otherwise")
     parser.add_argument("--include-int8", action="store_true")
     parser.add_argument("--profile", action="store_true")
     parser.add_argument(
@@ -216,15 +235,19 @@ def main() -> int:
         raise SystemExit("token counts and repeats must be positive; warmup must be non-negative")
     torch.manual_seed(2026)
     device = resolve_device(args.device)
+    compile_backend = args.compile_backend or default_compile_backend(device)
     tokenizer = load_tokenizer()
     model, preset = build_model(
         args.preset,
         tokenizer,
         device,
         max_position_embeddings=args.prompt_tokens + args.max_new_tokens + 8,
+        attention_implementation=args.attn,
     )
+    # One prompt repeated across the batch keeps every row the same length, so a
+    # batch-size sweep varies only the batch dimension.
     encoded = tokenizer(
-        args.prompt,
+        [args.prompt] * args.batch_size,
         max_length=args.prompt_tokens,
         truncation=True,
         padding="max_length",
@@ -232,13 +255,24 @@ def main() -> int:
     )
     input_ids = encoded["input_ids"].to(device)
 
-    variants = []
-    outputs = {}
-    for name, cache_mode, reuse in (
+    all_variants = (
         ("no_cache", "none", False),
         ("dynamic_cache", "dynamic", False),
         ("static_cache", "static", True),
-    ):
+    )
+    known = {name for name, _, _ in all_variants}
+    selected = [item.strip() for item in args.variants.split(",") if item.strip()]
+    unknown = sorted(set(selected) - known)
+    if unknown:
+        raise SystemExit(f"unknown variants {unknown}; choose from {sorted(known)}")
+    if not selected:
+        raise SystemExit("--variants must select at least one variant")
+
+    variants = []
+    outputs = {}
+    for name, cache_mode, reuse in all_variants:
+        if name not in selected:
+            continue
         result, output = benchmark_variant(
             name,
             model,
@@ -252,10 +286,14 @@ def main() -> int:
         variants.append(result)
         outputs[name] = output
 
+    # no_cache is the ground truth when it was measured; otherwise fall back to
+    # the first selected variant so a partial matrix still self-checks.
+    reference = "no_cache" if "no_cache" in outputs else next(iter(outputs))
+
     compile_metadata = None
     if args.include_compile:
         compile_started = time.perf_counter()
-        compiled_model = torch.compile(model, backend=args.compile_backend, fullgraph=False)
+        compiled_model = torch.compile(model, backend=compile_backend, fullgraph=False)
         _, _ = benchmark_variant(
             "compiled_warmup",
             compiled_model,
@@ -268,7 +306,7 @@ def main() -> int:
         synchronize(device)
         compile_seconds = time.perf_counter() - compile_started
         result, output = benchmark_variant(
-            f"compiled_{args.compile_backend}",
+            f"compiled_{compile_backend}",
             compiled_model,
             input_ids,
             args.max_new_tokens,
@@ -279,7 +317,7 @@ def main() -> int:
         variants.append(result)
         outputs[result["variant"]] = output
         compile_metadata = {
-            "backend": args.compile_backend,
+            "backend": compile_backend,
             "compile_and_first_request_seconds": round(compile_seconds, 3),
         }
 
@@ -306,7 +344,7 @@ def main() -> int:
                 "status": "completed",
                 "dtype": "qint8",
                 "modules": ["torch.nn.Linear"],
-                "output_matches_fp32_greedy": bool(torch.equal(output, outputs["no_cache"])),
+                "output_matches_fp32_greedy": bool(torch.equal(output, outputs[reference])),
             }
         except (RuntimeError, NotImplementedError) as error:
             quantization_metadata = {
@@ -316,32 +354,43 @@ def main() -> int:
             }
 
     correctness = {
-        name: bool(torch.equal(output, outputs["no_cache"]))
+        name: bool(torch.equal(output, outputs[reference]))
         for name, output in outputs.items()
     }
     by_name = {variant["variant"]: variant for variant in variants}
+    possible_comparisons = (
+        ("dynamic_vs_no_cache", "no_cache", "dynamic_cache"),
+        ("static_vs_dynamic", "dynamic_cache", "static_cache"),
+        ("static_vs_no_cache", "no_cache", "static_cache"),
+    )
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "environment": environment_metadata(device),
         "model": model_metadata(model, preset),
+        "attention": attention_metadata(model, args.attn),
         "workload": {
             "prompt_tokens": args.prompt_tokens,
             "max_new_tokens": args.max_new_tokens,
             "warmup_requests": args.warmup,
             "measured_requests": args.repeats,
-            "batch_size": 1,
+            "batch_size": args.batch_size,
+            "batch_composition": "homogeneous: one prompt repeated across the batch",
             "decoding": "greedy",
         },
         "variants": variants,
-        "correctness_matches_no_cache": correctness,
+        "correctness_reference": reference,
+        "correctness_matches_reference": correctness,
         "comparisons": {
-            "dynamic_vs_no_cache": speedup(by_name["no_cache"], by_name["dynamic_cache"]),
-            "static_vs_dynamic": speedup(by_name["dynamic_cache"], by_name["static_cache"]),
-            "static_vs_no_cache": speedup(by_name["no_cache"], by_name["static_cache"]),
+            label: speedup(by_name[base], by_name[other])
+            for label, base, other in possible_comparisons
+            if base in by_name and other in by_name
         },
         "compile": compile_metadata,
         "quantization": quantization_metadata,
     }
+    if reference == "no_cache":
+        # Retained so reports written before the batch-size axis stay readable.
+        report["correctness_matches_no_cache"] = correctness
     if args.profile:
         trace_dir = args.output.parent / "profiler"
         report["profiler"] = {

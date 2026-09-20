@@ -19,9 +19,13 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader, DistributedSampler, TensorDataset
 
 from benchmarks.common import (
+    ATTENTION_IMPLEMENTATIONS,
     MODEL_PRESETS,
     PROJECT_ROOT,
+    attention_metadata,
     build_model,
+    default_attention_implementation,
+    default_compile_backend,
     environment_metadata,
     load_tokenizer,
     model_metadata,
@@ -29,6 +33,18 @@ from benchmarks.common import (
     synchronize,
     write_json_report,
 )
+
+
+def percentile(values: list[float], quantile: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    index = (len(ordered) - 1) * quantile
+    lower = int(index)
+    upper = min(lower + 1, len(ordered) - 1)
+    weight = index - lower
+    return ordered[lower] * (1 - weight) + ordered[upper] * weight
+
 
 BUILTIN_TRAIN_TEXTS = [
     "MiniMind uses grouped query attention to reduce key value cache memory.",
@@ -158,7 +174,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--precision", choices=["fp32", "bf16", "fp16"], default="fp32")
     parser.add_argument("--steps", type=int, default=40)
-    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--warmup-steps", type=int, default=0,
+                        help="steps run before timing starts; excluded from throughput so "
+                             "torch.compile cost is reported separately instead of amortized in")
+    parser.add_argument("--batch-size", type=int, default=8, help="per-rank batch size (weak scaling under DDP)")
+    parser.add_argument("--global-batch-size", type=int, default=None,
+                        help="total batch across ranks; keeps the workload fixed as ranks grow (strong scaling)")
     parser.add_argument("--sequence-length", type=int, default=64)
     parser.add_argument("--learning-rate", type=float, default=3e-3)
     parser.add_argument("--grad-clip", type=float, default=1.0)
@@ -167,7 +188,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--text-field", default="text")
     parser.add_argument("--max-samples", type=int, default=4096)
     parser.add_argument("--compile", action="store_true")
-    parser.add_argument("--compile-backend", default="aot_eager")
+    parser.add_argument("--compile-backend", default=None,
+                        help="torch.compile backend; defaults to inductor on CUDA, aot_eager otherwise")
+    parser.add_argument(
+        "--attn",
+        choices=ATTENTION_IMPLEMENTATIONS,
+        default=default_attention_implementation(),
+        help="attention path to benchmark (default preserves published CPU results)",
+    )
     parser.add_argument("--profile", action="store_true")
     parser.add_argument("--save-model", type=Path)
     parser.add_argument(
@@ -180,11 +208,32 @@ def main() -> int:
     args = parse_args()
     if min(args.steps, args.batch_size, args.sequence_length, args.max_samples) <= 0:
         raise SystemExit("steps, batch size, sequence length, and max samples must be positive")
+    if args.warmup_steps < 0:
+        raise SystemExit("warmup steps must be non-negative")
     if args.precision == "fp16" and args.device == "cpu":
         raise SystemExit("fp16 training is not supported on CPU; use fp32 or bf16")
 
     torch.manual_seed(2026)
     device, rank, _, world_size = setup_distributed(args.device)
+    compile_backend = args.compile_backend or default_compile_backend(device)
+
+    # Weak scaling (the default) grows the global batch with the rank count.
+    # --global-batch-size pins total work instead, which is what a speedup claim
+    # against a single rank actually requires.
+    if args.global_batch_size is not None:
+        if args.global_batch_size <= 0:
+            raise SystemExit("global batch size must be positive")
+        if args.global_batch_size % world_size != 0:
+            raise SystemExit(
+                f"global batch size {args.global_batch_size} is not divisible by world size {world_size}"
+            )
+        per_rank_batch_size = args.global_batch_size // world_size
+        scaling_mode = "strong"
+    else:
+        per_rank_batch_size = args.batch_size
+        scaling_mode = "weak"
+    global_batch_size = per_rank_batch_size * world_size
+
     tokenizer = load_tokenizer()
     train_texts = (
         load_jsonl_texts(args.train_data, args.text_field, args.max_samples)
@@ -211,25 +260,30 @@ def main() -> int:
     generator = torch.Generator().manual_seed(2026)
     train_loader = DataLoader(
         train_dataset,
-        batch_size=args.batch_size,
+        batch_size=per_rank_batch_size,
         sampler=train_sampler,
         shuffle=train_sampler is None,
         generator=generator,
     )
     validation_loader = DataLoader(
         validation_dataset,
-        batch_size=args.batch_size,
+        batch_size=per_rank_batch_size,
         sampler=validation_sampler,
         shuffle=False,
     )
     model, preset = build_model(
-        args.preset, tokenizer, device, max_position_embeddings=args.sequence_length
+        args.preset,
+        tokenizer,
+        device,
+        max_position_embeddings=args.sequence_length,
+        attention_implementation=args.attn,
     )
+    attention = attention_metadata(model, args.attn)
     base_model = model
     compile_seconds = None
     if args.compile:
         started = time.perf_counter()
-        model = torch.compile(model, backend=args.compile_backend, fullgraph=False)
+        model = torch.compile(model, backend=compile_backend, fullgraph=False)
         compile_seconds = time.perf_counter() - started
     if world_size > 1:
         model = DistributedDataParallel(
@@ -244,25 +298,27 @@ def main() -> int:
     initial_validation_loss, validation_batches = evaluate(
         model, validation_loader, device, args.precision
     )
+    model.train()
     losses = []
+    step_seconds: list[float] = []
     valid_tokens = 0
     process = psutil.Process()
-    rss_before = process.memory_info().rss
-    if device.type == "cuda":
-        torch.cuda.reset_peak_memory_stats(device)
-    synchronize(device)
-    started = time.perf_counter()
     iterator = iter(train_loader)
     data_epoch = 0
-    for _ in range(args.steps):
+
+    def next_batch():
+        nonlocal iterator, data_epoch
         try:
-            input_ids, labels = next(iterator)
+            return next(iterator)
         except StopIteration:
             data_epoch += 1
             if train_sampler is not None:
                 train_sampler.set_epoch(data_epoch)
             iterator = iter(train_loader)
-            input_ids, labels = next(iterator)
+            return next(iterator)
+
+    def run_step(batch) -> tuple[float, int]:
+        input_ids, labels = batch
         input_ids, labels = input_ids.to(device), labels.to(device)
         optimizer.zero_grad(set_to_none=True)
         with autocast_context(device, args.precision):
@@ -272,41 +328,87 @@ def main() -> int:
         torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
         scaler.step(optimizer)
         scaler.update()
-        losses.append(float(loss.detach().cpu()))
-        valid_tokens += int((labels[:, 1:] != -100).sum().item())
+        return float(loss.detach().cpu()), int((labels[:, 1:] != -100).sum().item())
+
+    # Warmup steps absorb torch.compile tracing and allocator growth so they do
+    # not silently inflate the steady-state throughput below.
+    first_step_seconds = None
+    synchronize(device)
+    warmup_started = time.perf_counter()
+    for index in range(args.warmup_steps):
+        step_start = time.perf_counter()
+        run_step(next_batch())
+        synchronize(device)
+        if index == 0:
+            first_step_seconds = time.perf_counter() - step_start
+    synchronize(device)
+    warmup_seconds = time.perf_counter() - warmup_started if args.warmup_steps else 0.0
+
+    rss_before = process.memory_info().rss
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
+    synchronize(device)
+    started = time.perf_counter()
+    for index in range(args.steps):
+        step_start = time.perf_counter()
+        step_loss, step_tokens = run_step(next_batch())
+        # Required for meaningful per-step percentiles on CUDA; a no-op on CPU.
+        synchronize(device)
+        step_seconds.append(time.perf_counter() - step_start)
+        if first_step_seconds is None and index == 0:
+            first_step_seconds = step_seconds[0]
+        losses.append(step_loss)
+        valid_tokens += step_tokens
     synchronize(device)
     training_seconds = time.perf_counter() - started
+    measured_tokens = valid_tokens
     if dist.is_initialized():
         elapsed_tensor = torch.tensor(training_seconds, device=device)
         dist.all_reduce(elapsed_tensor, op=dist.ReduceOp.MAX)
         training_seconds = float(elapsed_tensor.cpu())
+        # Sum the tokens actually processed instead of assuming every rank
+        # padded identically.
+        token_tensor = torch.tensor(float(valid_tokens), device=device)
+        dist.all_reduce(token_tensor, op=dist.ReduceOp.SUM)
+        measured_tokens = int(token_tensor.cpu())
 
     final_validation_loss, _ = evaluate(model, validation_loader, device, args.precision)
     rss_after = process.memory_info().rss
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "environment": environment_metadata(device),
         "distributed": {
             "backend": dist.get_backend() if dist.is_initialized() else None,
             "world_size": world_size,
+            "scaling_mode": scaling_mode,
         },
         "model": model_metadata(base_model, preset),
+        "attention": attention,
         "data": {
             "train_samples": len(train_dataset),
             "validation_samples": len(validation_dataset),
             "sequence_length": args.sequence_length,
             "source": "jsonl" if args.train_data else "built-in engineering corpus",
+            "corpus_is_toy": args.train_data is None,
         },
         "training": {
             "steps": args.steps,
-            "global_batch_size": args.batch_size * world_size,
+            "warmup_steps": args.warmup_steps,
+            "scaling_mode": scaling_mode,
+            "per_rank_batch_size": per_rank_batch_size,
+            "global_batch_size": global_batch_size,
             "precision": args.precision,
             "learning_rate": args.learning_rate,
             "loss_first": round(losses[0], 6),
             "loss_final": round(losses[-1], 6),
             "loss_curve": [round(value, 6) for value in losses],
             "seconds": round(training_seconds, 6),
-            "tokens_per_second": round(valid_tokens * world_size / training_seconds, 3),
+            "tokens_per_second": round(measured_tokens / training_seconds, 3),
+            "measured_tokens": measured_tokens,
+            "step_seconds_p50_ms": round(percentile(step_seconds, 0.50) * 1000, 3),
+            "step_seconds_p95_ms": round(percentile(step_seconds, 0.95) * 1000, 3),
+            "step_seconds_mean_ms": round(1000 * sum(step_seconds) / len(step_seconds), 3),
+            "per_step_synchronized": True,
             "process_rss_delta_mb": round(max(0, rss_after - rss_before) / 1024**2, 3),
         },
         "validation": {
@@ -315,11 +417,16 @@ def main() -> int:
             "final_loss": round(final_validation_loss, 6),
             "initial_perplexity": round(math.exp(min(initial_validation_loss, 20)), 4),
             "final_perplexity": round(math.exp(min(final_validation_loss, 20)), 4),
+            # The built-in corpus is 32 repeated sentences; perplexity on it
+            # measures that the training loop runs, not that the model is good.
+            "perplexity_is_indicative_only": args.train_data is None,
         },
         "compile": {
             "enabled": args.compile,
-            "backend": args.compile_backend if args.compile else None,
+            "backend": compile_backend if args.compile else None,
             "wrapper_creation_seconds": round(compile_seconds, 6) if compile_seconds is not None else None,
+            "first_step_seconds": round(first_step_seconds, 6) if first_step_seconds is not None else None,
+            "warmup_seconds": round(warmup_seconds, 6),
         },
     }
     if device.type == "cuda":

@@ -49,16 +49,39 @@ def load_tokenizer():
     return AutoTokenizer.from_pretrained(PROJECT_ROOT / "model", local_files_only=True)
 
 
+ATTENTION_IMPLEMENTATIONS = ("manual", "sdpa")
+
+
+def default_attention_implementation() -> str:
+    """Historical default. Published CPU results were measured with the manual path.
+
+    Kept as the default so existing artifacts stay reproducible; the GPU suite
+    opts into ``sdpa`` explicitly and records which path produced each number.
+    """
+    return "manual"
+
+
+def default_compile_backend(device: torch.device) -> str:
+    """Inductor is the backend worth measuring on CUDA; aot_eager elsewhere."""
+    return "inductor" if device.type == "cuda" else "aot_eager"
+
+
 def build_model(
     preset_name: str,
     tokenizer,
     device: torch.device,
     max_position_embeddings: int,
+    attention_implementation: str = "manual",
 ) -> tuple[MiniMindForCausalLM, ModelPreset]:
     try:
         preset = MODEL_PRESETS[preset_name]
     except KeyError as error:
         raise ValueError(f"unknown preset {preset_name!r}; choose from {sorted(MODEL_PRESETS)}") from error
+    if attention_implementation not in ATTENTION_IMPLEMENTATIONS:
+        raise ValueError(
+            f"unknown attention implementation {attention_implementation!r}; "
+            f"choose from {list(ATTENTION_IMPLEMENTATIONS)}"
+        )
     config = MiniMindConfig(
         hidden_size=preset.hidden_size,
         num_hidden_layers=preset.num_hidden_layers,
@@ -67,10 +90,25 @@ def build_model(
         num_key_value_heads=preset.num_key_value_heads,
         head_dim=preset.hidden_size // preset.num_attention_heads,
         max_position_embeddings=max_position_embeddings,
-        flash_attn=False,
+        flash_attn=attention_implementation == "sdpa",
         dropout=0.0,
     )
     return MiniMindForCausalLM(config).eval().to(device), preset
+
+
+def attention_metadata(model: MiniMindForCausalLM, requested: str) -> dict:
+    """Report the path that was requested and the one the model actually took.
+
+    ``sdpa`` silently degrades to the manual path when the running PyTorch build
+    has no ``scaled_dot_product_attention``, so the effective value is recorded
+    rather than assumed.
+    """
+    effective = [bool(layer.self_attn.flash) for layer in model.model.layers]
+    return {
+        "requested": requested,
+        "sdpa_enabled": all(effective),
+        "effective": "sdpa" if all(effective) else "manual",
+    }
 
 
 def environment_metadata(device: torch.device) -> dict:
