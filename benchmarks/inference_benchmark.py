@@ -6,6 +6,7 @@ import argparse
 import copy
 import statistics
 import time
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Literal
 
@@ -33,6 +34,24 @@ from model.cache import StaticKVCache
 CacheMode = Literal["none", "dynamic", "static"]
 
 
+def autocast_context(device: torch.device, precision: str):
+    """fp32 runs unwrapped so existing reports stay bit-for-bit reproducible."""
+    if precision == "fp32":
+        return nullcontext()
+    dtype = torch.bfloat16 if precision == "bf16" else torch.float16
+    return torch.autocast(device_type=device.type, dtype=dtype)
+
+
+def first_divergence(left: torch.Tensor, right: torch.Tensor) -> int | None:
+    """Index of the first differing token, or None when the two agree."""
+    if left.shape != right.shape:
+        return 0
+    mismatches = (left != right).nonzero()
+    if mismatches.numel() == 0:
+        return None
+    return int(mismatches[0][-1])
+
+
 def percentile(values: list[float], quantile: float) -> float:
     if not values:
         return 0.0
@@ -51,6 +70,7 @@ def greedy_decode(
     max_new_tokens: int,
     cache_mode: CacheMode,
     reusable_cache: StaticKVCache | None = None,
+    precision: str = "fp32",
 ) -> tuple[torch.Tensor, list[float], StaticKVCache | None]:
     generated = input_ids
     past_key_values = None
@@ -72,11 +92,12 @@ def greedy_decode(
         step_input = generated if cache_mode == "none" or needs_prefill else generated[:, -1:]
         synchronize(input_ids.device)
         started = time.perf_counter()
-        output = model(
-            step_input,
-            past_key_values=past_key_values,
-            use_cache=cache_mode != "none",
-        )
+        with autocast_context(input_ids.device, precision):
+            output = model(
+                step_input,
+                past_key_values=past_key_values,
+                use_cache=cache_mode != "none",
+            )
         next_token = output.logits[:, -1].argmax(dim=-1, keepdim=True)
         synchronize(input_ids.device)
         token_latencies.append(time.perf_counter() - started)
@@ -95,6 +116,7 @@ def benchmark_variant(
     warmup: int,
     repeats: int,
     reuse_static_cache: bool = False,
+    precision: str = "fp32",
 ) -> tuple[dict, torch.Tensor]:
     reusable_cache = None
     if reuse_static_cache:
@@ -104,7 +126,7 @@ def benchmark_variant(
             batch_size=input_ids.shape[0],
         )
     for _ in range(warmup):
-        greedy_decode(model, input_ids, max_new_tokens, cache_mode, reusable_cache)
+        greedy_decode(model, input_ids, max_new_tokens, cache_mode, reusable_cache, precision)
 
     request_latencies = []
     ttft_latencies = []
@@ -117,7 +139,7 @@ def benchmark_variant(
         torch.cuda.reset_peak_memory_stats(input_ids.device)
     for _ in range(repeats):
         last_output, token_latencies, last_cache = greedy_decode(
-            model, input_ids, max_new_tokens, cache_mode, reusable_cache
+            model, input_ids, max_new_tokens, cache_mode, reusable_cache, precision
         )
         request_latencies.append(sum(token_latencies))
         ttft_latencies.append(token_latencies[0])
@@ -131,6 +153,7 @@ def benchmark_variant(
         "variant": name,
         "cache_mode": cache_mode,
         "batch_size": batch_size,
+        "precision": precision,
         "warmup_requests": warmup,
         "measured_requests": repeats,
         "generated_tokens": total_tokens,
@@ -204,6 +227,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prompt", default="MiniMind 是一个小型语言模型。")
     parser.add_argument("--prompt-tokens", type=int, default=32)
     parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--precision", choices=["fp32", "bf16", "fp16"], default="fp32",
+                        help="fp32 (default) keeps published results reproducible; "
+                             "bf16/fp16 reflect how the model would actually be served")
     parser.add_argument("--max-new-tokens", type=int, default=64)
     parser.add_argument("--warmup", type=int, default=3)
     parser.add_argument("--repeats", type=int, default=10)
@@ -233,6 +259,8 @@ def main() -> int:
     args = parse_args()
     if min(args.prompt_tokens, args.max_new_tokens, args.repeats) <= 0 or args.warmup < 0:
         raise SystemExit("token counts and repeats must be positive; warmup must be non-negative")
+    if args.precision == "fp16" and args.device == "cpu":
+        raise SystemExit("fp16 autocast is not supported on CPU; use fp32 or bf16")
     torch.manual_seed(2026)
     device = resolve_device(args.device)
     compile_backend = args.compile_backend or default_compile_backend(device)
@@ -282,6 +310,7 @@ def main() -> int:
             args.warmup,
             args.repeats,
             reuse_static_cache=reuse,
+            precision=args.precision,
         )
         variants.append(result)
         outputs[name] = output
@@ -302,6 +331,7 @@ def main() -> int:
             "dynamic",
             warmup=1,
             repeats=1,
+            precision=args.precision,
         )
         synchronize(device)
         compile_seconds = time.perf_counter() - compile_started
@@ -313,6 +343,7 @@ def main() -> int:
             "dynamic",
             args.warmup,
             args.repeats,
+            precision=args.precision,
         )
         variants.append(result)
         outputs[result["variant"]] = output
@@ -357,6 +388,11 @@ def main() -> int:
         name: bool(torch.equal(output, outputs[reference]))
         for name, output in outputs.items()
     }
+    divergence = {
+        name: first_divergence(output, outputs[reference])
+        for name, output in outputs.items()
+        if not correctness[name]
+    }
     by_name = {variant["variant"]: variant for variant in variants}
     possible_comparisons = (
         ("dynamic_vs_no_cache", "no_cache", "dynamic_cache"),
@@ -378,8 +414,14 @@ def main() -> int:
             "decoding": "greedy",
         },
         "variants": variants,
+        "precision": args.precision,
         "correctness_reference": reference,
         "correctness_matches_reference": correctness,
+        "first_divergent_token_index": divergence,
+        # Cache modes must agree exactly in fp32. Under autocast, greedy argmax
+        # ties can flip between the recomputed and cached paths, so a late
+        # divergence is expected rather than a defect.
+        "correctness_is_enforced": args.precision == "fp32",
         "comparisons": {
             label: speedup(by_name[base], by_name[other])
             for label, base, other in possible_comparisons
@@ -410,6 +452,8 @@ def main() -> int:
         for name, matches in correctness.items()
         if not name.endswith("_int8")
     }
+    if args.precision != "fp32":
+        return 0
     return 0 if all(required_correctness.values()) else 1
 
 

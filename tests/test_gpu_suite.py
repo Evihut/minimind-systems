@@ -54,6 +54,12 @@ def test_only_the_anchor_cell_pays_for_the_no_cache_baseline():
     assert "no_cache" not in other
 
 
+def test_kvcache_cells_are_measured_at_the_requested_precision():
+    cells = build_plan(make_args(groups=["kvcache"], precision="bf16"))
+    for cell in cells:
+        assert "--precision bf16" in " ".join(str(part) for part in cell.command)
+
+
 def test_pipeline_is_skipped_rather_than_run_on_the_toy_corpus():
     (cell,) = build_plan(make_args(groups=["pipeline"]))
     assert cell.skip_reason is not None

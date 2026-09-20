@@ -153,6 +153,7 @@ def build_plan(args: argparse.Namespace) -> list[Cell]:
                             "--preset": preset,
                             "--device": device,
                             "--attn": attn,
+                            "--precision": args.precision,
                             "--prompt-tokens": context,
                             "--batch-size": batch,
                             "--max-new-tokens": new_tokens,
