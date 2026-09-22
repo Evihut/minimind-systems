@@ -113,7 +113,11 @@ class AsyncDynamicBatcher(Generic[InputT, OutputT]):
                     break
                 try:
                     batch.append(await asyncio.wait_for(self.queue.get(), remaining))
-                except TimeoutError:
+                # asyncio.TimeoutError only became an alias of the built-in
+                # TimeoutError in Python 3.11. Catch the asyncio spelling so
+                # the batch worker does not die and strand request futures on
+                # Python 3.10.
+                except asyncio.TimeoutError:
                     break
             self._update_queue_metric()
             now = loop.time()
