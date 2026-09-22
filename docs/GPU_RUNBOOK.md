@@ -1,10 +1,12 @@
 # GPU runbook
 
 A short, budget-capped GPU session that produces the CUDA evidence the CPU
-benchmarks cannot. Designed for one on-demand rental of roughly 2–3 hours on a
-single RTX 4090; the suite's printed estimate is a rough planning value, not a
-measurement. Everything below is rehearsed locally first so paid time is not
-spent debugging scripts.
+benchmarks cannot. The first completed RTX 4090 run spent 4m19s inside the
+nine-cell suite; setup, verification, dataset download, profiling, and artifact
+collection made the end-to-end rental roughly half an hour. Treat that as one
+observed run, not a guarantee: cold caches, image setup, and provider bandwidth
+can vary. Everything below is rehearsed locally first so paid time is not spent
+debugging scripts.
 
 ## 0. Rehearse locally (free)
 
@@ -121,6 +123,14 @@ artifacts/gpu/
   pipeline/*.json        short pretrain with held-out eval
   logs/*.log             full stdout per cell
 ```
+
+After the run, validate the evidence and regenerate the human-readable report:
+
+```bash
+make gpu-report
+```
+
+The committed reference run is summarized in [`GPU_RESULTS.md`](GPU_RESULTS.md).
 
 **If the connection drops or you Ctrl-C**, just re-run the same command. Cells
 already recorded as `done` are reused; a cell is only reused when the same

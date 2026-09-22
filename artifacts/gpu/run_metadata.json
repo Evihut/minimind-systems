@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "run_id": "RTX4090-BF16-20260922",
+  "source_commit": "84f04c56c31b55df7576fb5d4c8bcc5e9c07df63",
+  "provider": "AutoDL",
+  "region": "Beijing B",
+  "gpu_count": 1,
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "driver": "580.105.08",
+  "cuda_runtime": "12.4",
+  "python": "3.12.3",
+  "pytorch": "2.5.1+cu124",
+  "hourly_rate_cny": 2.18,
+  "suite_started_at": "2026-09-22T01:04:39Z",
+  "suite_finished_at": "2026-09-22T01:08:58Z",
+  "scope": "single-GPU controlled systems benchmark; not a converged language-model quality run"
+}

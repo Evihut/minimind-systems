@@ -1,6 +1,6 @@
 # MiniMind Training & Inference Optimization Platform
 
-> Personal practice / engineering extensions based on MiniMind. See [the repository homepage](README.md) for publication scope and limitations. All measured numbers below are exploratory CPU microbenchmarks, not 64M GPU results or statistically established speedups. Raw traces and generated weights are reproducible local artifacts, not part of this Git upload.
+> 基于 MiniMind 的个人 ML Systems 工程扩展。上游归属与个人贡献边界见 [README](README.md) 和 [UPSTREAM.md](UPSTREAM.md)。仓库公开原始 JSON、数据 provenance、运行环境和可再生报告；不提交模型权重与大体积 Chrome trace。
 
 一个基于原生 PyTorch 的小型 LLM 训练、性能分析与在线推理平台。项目以 [MiniMind](https://github.com/jingyaogong/minimind) 为实验底座，个人贡献集中在 **Static KV Cache、可复现实验框架、动态批处理、模型缓存、可观测 API 服务和自动验证**，而不是把运行上游代码包装成个人成果。
 
@@ -9,8 +9,21 @@
 - 实现预分配、可复用的 `StaticKVCache`，避免逐 token 解码时反复 `torch.cat` 和内存重分配；通过完整前向、动态缓存和静态缓存的 logits/生成结果一致性测试。
 - 建立训练与推理 benchmark，统一记录 loss、validation perplexity、tokens/s、TTFT、p50/p95 latency、RSS/峰值显存，并可导出 `torch.profiler` Chrome Trace。
 - 构建 OpenAI-compatible FastAPI 服务，加入有界请求队列、按生成参数分组的动态批处理、并发安全 LRU 模型缓存、SSE 响应和 Prometheus 指标。
-- 提供 25.76M / 63.91M 参数实验预设、BF16/FP16、`torch.compile`、DDP `torchrun` 和动态 INT8 探测入口；未执行的 GPU 实验不会写成已完成成果。
-- 建立 21 项 CPU 自动测试、Python 3.10/3.12 CI、训练/推理 smoke benchmark、Docker Compose 和负载测试工具。
+- 提供 25.76M / 63.91M 参数实验预设、BF16/FP16、`torch.compile`、DDP `torchrun` 和动态 INT8 探测入口；用可恢复、带预算上限的 suite 管理付费 GPU 实验。
+- 建立 65 项自动测试、Python 3.10/3.12 CI、训练/推理 smoke benchmark、Docker Compose 和负载测试工具。
+
+## RTX 4090 实测
+
+环境：单卡 RTX 4090、PyTorch 2.5.1+cu124、BF16、SDPA、63.91M 参数。完整报告见 [`docs/GPU_RESULTS.md`](docs/GPU_RESULTS.md)。
+
+| 实验 | 受控变量 | 结论 |
+|---|---|---|
+| TorchInductor | 相同模型、数据、batch、精度；eager vs compile | 稳态吞吐 **+64.2%**，p50 step time **-39.8%**，峰值显存 **-28.8%** |
+| 编译冷启动 | 首次编译成本 vs 每步节省 | 首步 33.42s，约 **1,229 steps** 后回本 |
+| Static KV Cache | context 128/512/1024 × batch 1/8 | 峰值显存最多 **-16.26%**；吞吐变化 -4.36%～+1.79%，不宣称普遍加速 |
+| 真实语料训练链路 | 500 steps，独立 train/validation | validation loss 8.9248→6.0640，PPL 7,515.8→430.1 |
+
+最后一项只证明真实文本上的训练、验证和 provenance 链路成立，不代表模型已经收敛或达到可用对话质量。
 
 ## 本机实测
 
@@ -40,9 +53,9 @@ Static Cache 相比无缓存吞吐提升 **74.10%**、p95 延迟下降 **42.32%*
 
 2ms 配置相较无批处理，吞吐提升 **155.20%**、p95 延迟下降 **54.39%**、p95 TTFT 下降 **73.35%**。饱和流量下 10ms 能形成更完整的 batch，因此三项指标更优；但在并发 2、8-token 的稀疏流量下，2ms 相对 10ms 将 p95 延迟降低 **51.10%**、p95 TTFT 降低 **66.46%**。默认采用 2ms，以牺牲部分峰值吞吐换取稀疏流量响应性。对照报告见 [`artifacts/load_test_comparison_2ms.json`](artifacts/load_test_comparison_2ms.json) 和 [`artifacts/load_test_sparse_comparison.json`](artifacts/load_test_sparse_comparison.json)。
 
-### 训练链路
+### CPU 训练链路检查
 
-40-step CPU 控制实验将 train loss 从 8.7857 降至 1.5036，独立 validation perplexity 从 6,552.0 降至 2,630.7，训练吞吐 13,642.8 tokens/s。该实验只证明数据、反向传播、评估、保存和 profiler 链路正确；完整 26M/64M GPU 训练仍列为下一阶段。原始数据见 [`artifacts/training_benchmark.json`](artifacts/training_benchmark.json)。
+40-step CPU 控制实验将 train loss 从 8.7857 降至 1.5036，独立 validation perplexity 从 6,552.0 降至 2,630.7，训练吞吐 13,642.8 tokens/s。该实验只证明数据、反向传播、评估、保存和 profiler 链路正确。原始数据见 [`artifacts/training_benchmark.json`](artifacts/training_benchmark.json)。
 
 ## 快速验证
 

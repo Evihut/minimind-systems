@@ -65,12 +65,12 @@ flowchart LR
 2. Cache：full forward、dynamic cache、static cache 的 logits 与 greedy output 一致；buffer pointer 稳定。
 3. 训练：scheduler、断点采样器、真实 tokenizer 的端到端反向传播。
 4. 服务：并发请求合批、参数隔离、LRU/并发加载合并、Prometheus 指标、真实 batch backend 的 TTFT。
-5. 交付：Ruff、21 项 pytest、CI smoke benchmark、Docker Compose 配置检查。
+5. 交付：Ruff、65 项 pytest、CI smoke benchmark、Docker Compose 配置检查。
 
-## 仍需 GPU 验证的边界
+## GPU 验证状态与剩余边界
 
-- 25.76M/63.91M 从零训练结果、C-Eval/C-MMLU/OpenBookQA 能力指标。
-- CUDA BF16/FP16 的真实吞吐、峰值显存与 DDP scaling efficiency。
-- TorchInductor 编译收益、graph break 原因和 CUDA Graph 兼容性。
+- 已完成：单卡 RTX 4090、63.91M、BF16/SDPA 的 eager/Inductor 对照、Static/Dynamic KV Cache 矩阵和真实语料 500-step pipeline check；原始证据见 [`GPU_RESULTS.md`](GPU_RESULTS.md)。
+- 仍缺少：更长训练后的 C-Eval/C-MMLU/OpenBookQA 等能力指标，以及 checkpoint 质量评估。
+- 仍缺少：FP16 对照、DDP scaling efficiency、CUDA Graph 兼容性与动态 shape graph-break 分析。
 - INT8/INT4 的效果—速度—显存 Pareto curve。
-- 长上下文和大 batch 下 Static Cache 相对 dynamic cache 的收益。
+- 真实在线流量下的 client-observed streaming TTFT、取消、混合长度 batching 和持续高并发稳定性。

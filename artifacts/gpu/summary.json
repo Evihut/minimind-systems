@@ -1,0 +1,201 @@
+{
+  "schema_version": 1,
+  "run": {
+    "schema_version": 1,
+    "run_id": "RTX4090-BF16-20260922",
+    "source_commit": "84f04c56c31b55df7576fb5d4c8bcc5e9c07df63",
+    "provider": "AutoDL",
+    "region": "Beijing B",
+    "gpu_count": 1,
+    "gpu": "NVIDIA GeForce RTX 4090",
+    "driver": "580.105.08",
+    "cuda_runtime": "12.4",
+    "python": "3.12.3",
+    "pytorch": "2.5.1+cu124",
+    "hourly_rate_cny": 2.18,
+    "suite_started_at": "2026-09-22T01:04:39Z",
+    "suite_finished_at": "2026-09-22T01:08:58Z",
+    "scope": "single-GPU controlled systems benchmark; not a converged language-model quality run"
+  },
+  "suite": {
+    "device": "cuda",
+    "preset": "64m",
+    "precision": "bf16",
+    "attn": "sdpa",
+    "groups": [
+      "compile",
+      "kvcache",
+      "pipeline"
+    ],
+    "quick": false,
+    "cells_completed": 9,
+    "duration_seconds": 258.587
+  },
+  "environment": {
+    "python": "3.12.3",
+    "torch": "2.5.1+cu124",
+    "transformers": "5.17.0",
+    "platform": "Linux-5.15.0-78-generic-x86_64-with-glibc2.35",
+    "device": "cuda",
+    "accelerator": "NVIDIA GeForce RTX 4090"
+  },
+  "model": {
+    "preset": {
+      "hidden_size": 768,
+      "num_hidden_layers": 8,
+      "num_attention_heads": 8,
+      "num_key_value_heads": 4
+    },
+    "parameters": 63912192,
+    "parameters_millions": 63.9122,
+    "estimated_fp32_size_mb": 243.806
+  },
+  "compile": {
+    "eager_tokens_per_second": 2534.248,
+    "compiled_tokens_per_second": 4160.347,
+    "steady_state_speedup_x": 1.642,
+    "throughput_improvement_percent": 64.16,
+    "eager_step_p50_ms": 69.906,
+    "compiled_step_p50_ms": 42.062,
+    "step_p50_reduction_percent": 39.83,
+    "eager_peak_gpu_memory_mb": 2770.006,
+    "compiled_peak_gpu_memory_mb": 1973.709,
+    "peak_gpu_memory_reduction_percent": 28.75,
+    "compile_first_step_seconds": 33.42452,
+    "estimated_break_even_steps": 1228.9,
+    "precision": "bf16",
+    "attention": "sdpa"
+  },
+  "pipeline": {
+    "steps": 500,
+    "train_samples": 4096,
+    "validation_samples": 2000,
+    "initial_validation_loss": 8.924763,
+    "final_validation_loss": 6.06397,
+    "validation_loss_reduction_percent": 32.05,
+    "initial_validation_perplexity": 7515.7998,
+    "final_validation_perplexity": 430.0795,
+    "validation_perplexity_reduction_percent": 94.28,
+    "tokens_per_second": 22830.22,
+    "peak_gpu_memory_mb": 2770.006,
+    "measured_training_seconds": 35.798166,
+    "corpus_is_toy": false,
+    "perplexity_is_indicative_only": false
+  },
+  "kvcache": {
+    "matrix": [
+      {
+        "context_tokens": 128,
+        "batch_size": 1,
+        "dynamic_tokens_per_second": 118.264,
+        "static_tokens_per_second": 116.672,
+        "static_throughput_change_percent": -1.35,
+        "dynamic_inter_token_p95_ms": 8.582,
+        "static_inter_token_p95_ms": 8.648,
+        "static_inter_token_p95_change_percent": 0.77,
+        "dynamic_peak_gpu_memory_mb": 137.456,
+        "static_peak_gpu_memory_mb": 136.692,
+        "static_peak_gpu_memory_reduction_percent": 0.56,
+        "static_kv_cache_allocated_mb": 2.25,
+        "required_correctness": {
+          "static_matches_dynamic": true
+        }
+      },
+      {
+        "context_tokens": 128,
+        "batch_size": 8,
+        "dynamic_tokens_per_second": 924.198,
+        "static_tokens_per_second": 911.008,
+        "static_throughput_change_percent": -1.43,
+        "dynamic_inter_token_p95_ms": 8.758,
+        "static_inter_token_p95_ms": 9.051,
+        "static_inter_token_p95_change_percent": 3.35,
+        "dynamic_peak_gpu_memory_mb": 174.379,
+        "static_peak_gpu_memory_mb": 172.95,
+        "static_peak_gpu_memory_reduction_percent": 0.82,
+        "static_kv_cache_allocated_mb": 18.0,
+        "required_correctness": {
+          "static_matches_dynamic": true
+        }
+      },
+      {
+        "context_tokens": 512,
+        "batch_size": 1,
+        "dynamic_tokens_per_second": 117.732,
+        "static_tokens_per_second": 112.602,
+        "static_throughput_change_percent": -4.36,
+        "dynamic_inter_token_p95_ms": 9.237,
+        "static_inter_token_p95_ms": 11.895,
+        "static_inter_token_p95_change_percent": 28.78,
+        "dynamic_peak_gpu_memory_mb": 153.175,
+        "static_peak_gpu_memory_mb": 149.087,
+        "static_peak_gpu_memory_reduction_percent": 2.67,
+        "static_kv_cache_allocated_mb": 6.75,
+        "required_correctness": {
+          "static_matches_dynamic": true
+        }
+      },
+      {
+        "context_tokens": 512,
+        "batch_size": 8,
+        "dynamic_tokens_per_second": 900.745,
+        "static_tokens_per_second": 890.098,
+        "static_throughput_change_percent": -1.18,
+        "dynamic_inter_token_p95_ms": 11.026,
+        "static_inter_token_p95_ms": 10.25,
+        "static_inter_token_p95_change_percent": -7.04,
+        "dynamic_peak_gpu_memory_mb": 297.802,
+        "static_peak_gpu_memory_mb": 265.786,
+        "static_peak_gpu_memory_reduction_percent": 10.75,
+        "static_kv_cache_allocated_mb": 54.0,
+        "required_correctness": {
+          "static_matches_dynamic": true
+        }
+      },
+      {
+        "context_tokens": 1024,
+        "batch_size": 1,
+        "dynamic_tokens_per_second": 111.773,
+        "static_tokens_per_second": 113.779,
+        "static_throughput_change_percent": 1.79,
+        "dynamic_inter_token_p95_ms": 12.652,
+        "static_inter_token_p95_ms": 10.07,
+        "static_inter_token_p95_change_percent": -20.41,
+        "dynamic_peak_gpu_memory_mb": 173.26,
+        "static_peak_gpu_memory_mb": 163.708,
+        "static_peak_gpu_memory_reduction_percent": 5.51,
+        "static_kv_cache_allocated_mb": 12.75,
+        "required_correctness": {
+          "static_matches_dynamic": true
+        }
+      },
+      {
+        "context_tokens": 1024,
+        "batch_size": 8,
+        "dynamic_tokens_per_second": 919.723,
+        "static_tokens_per_second": 905.888,
+        "static_throughput_change_percent": -1.5,
+        "dynamic_inter_token_p95_ms": 8.673,
+        "static_inter_token_p95_ms": 8.805,
+        "static_inter_token_p95_change_percent": 1.52,
+        "dynamic_peak_gpu_memory_mb": 461.113,
+        "static_peak_gpu_memory_mb": 386.129,
+        "static_peak_gpu_memory_reduction_percent": 16.26,
+        "static_kv_cache_allocated_mb": 102.0,
+        "required_correctness": {
+          "static_matches_dynamic": true
+        }
+      }
+    ],
+    "all_required_correctness_passed": true,
+    "static_throughput_change_range_percent": [
+      -4.36,
+      1.79
+    ],
+    "max_peak_gpu_memory_reduction_percent": 16.26,
+    "max_peak_gpu_memory_reduction_workload": {
+      "context_tokens": 1024,
+      "batch_size": 8
+    }
+  }
+}

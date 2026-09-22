@@ -1,0 +1,101 @@
+{
+  "schema_version": 2,
+  "environment": {
+    "python": "3.12.3",
+    "torch": "2.5.1+cu124",
+    "transformers": "5.17.0",
+    "platform": "Linux-5.15.0-78-generic-x86_64-with-glibc2.35",
+    "device": "cuda",
+    "accelerator": "NVIDIA GeForce RTX 4090"
+  },
+  "model": {
+    "preset": {
+      "hidden_size": 768,
+      "num_hidden_layers": 8,
+      "num_attention_heads": 8,
+      "num_key_value_heads": 4
+    },
+    "parameters": 63912192,
+    "parameters_millions": 63.9122,
+    "estimated_fp32_size_mb": 243.806
+  },
+  "attention": {
+    "requested": "sdpa",
+    "sdpa_enabled": true,
+    "effective": "sdpa"
+  },
+  "workload": {
+    "prompt_tokens": 1024,
+    "max_new_tokens": 64,
+    "warmup_requests": 3,
+    "measured_requests": 10,
+    "batch_size": 8,
+    "batch_composition": "homogeneous: one prompt repeated across the batch",
+    "decoding": "greedy"
+  },
+  "variants": [
+    {
+      "variant": "dynamic_cache",
+      "cache_mode": "dynamic",
+      "batch_size": 8,
+      "precision": "bf16",
+      "parameter_dtype": "bfloat16",
+      "warmup_requests": 3,
+      "measured_requests": 10,
+      "generated_tokens": 5120,
+      "throughput_tokens_per_second": 919.723,
+      "ttft_p50_ms": 14.615,
+      "ttft_p95_ms": 14.668,
+      "request_latency_p50_ms": 555.256,
+      "request_latency_p95_ms": 562.558,
+      "inter_token_latency_p50_ms": 8.571,
+      "inter_token_latency_p95_ms": 8.673,
+      "request_latency_mean_ms": 556.689,
+      "process_rss_delta_mb": 0.316,
+      "peak_gpu_memory_mb": 461.113
+    },
+    {
+      "variant": "static_cache",
+      "cache_mode": "static",
+      "batch_size": 8,
+      "precision": "bf16",
+      "parameter_dtype": "bfloat16",
+      "warmup_requests": 3,
+      "measured_requests": 10,
+      "generated_tokens": 5120,
+      "throughput_tokens_per_second": 905.888,
+      "ttft_p50_ms": 14.767,
+      "ttft_p95_ms": 14.809,
+      "request_latency_p50_ms": 565.171,
+      "request_latency_p95_ms": 569.984,
+      "inter_token_latency_p50_ms": 8.641,
+      "inter_token_latency_p95_ms": 8.805,
+      "request_latency_mean_ms": 565.191,
+      "process_rss_delta_mb": 0.0,
+      "peak_gpu_memory_mb": 386.129,
+      "kv_cache_allocated_mb": 102.0,
+      "cache_buffer_reused": true
+    }
+  ],
+  "precision": "bf16",
+  "parameter_dtype": "bfloat16",
+  "correctness_reference": "dynamic_cache",
+  "correctness_matches_reference": {
+    "dynamic_cache": true,
+    "static_cache": true
+  },
+  "first_divergent_token_index": {},
+  "comparisons": {
+    "static_vs_dynamic": {
+      "throughput_speedup_x": 0.985,
+      "throughput_improvement_percent": -1.5,
+      "p95_latency_reduction_percent": -1.32
+    }
+  },
+  "compile": null,
+  "quantization": null,
+  "required_correctness": {
+    "static_matches_dynamic": true
+  },
+  "correctness_is_enforced": true
+}

@@ -1,4 +1,4 @@
-.PHONY: help setup-gpu test lint smoke benchmark-inference benchmark-training gpu-suite gpu-suite-plan gpu-suite-rehearse dataset-sample verify
+.PHONY: help setup-gpu test lint smoke benchmark-inference benchmark-training gpu-suite gpu-suite-plan gpu-suite-rehearse gpu-report dataset-sample verify
 
 PYTHON ?= python3
 DEVICE ?= cpu
@@ -13,6 +13,7 @@ help:
 	@echo "make gpu-suite          - run the resumable GPU experiment suite"
 	@echo "make gpu-suite-plan     - print the suite plan without running it"
 	@echo "make gpu-suite-rehearse - rehearse the whole suite on CPU in seconds"
+	@echo "make gpu-report         - validate GPU artifacts and regenerate the report/dashboard"
 	@echo "make dataset-sample     - fetch a small real corpus prefix from ModelScope"
 	@echo "make verify  - run lint, tests, and smoke validation"
 
@@ -58,5 +59,8 @@ gpu-suite-plan:
 
 gpu-suite-rehearse:
 	$(PYTHON) -m benchmarks.gpu_suite --device cpu --quick
+
+gpu-report:
+	$(PYTHON) -m tools.summarize_gpu_results
 
 verify: lint test smoke

@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+    <stop stop-color="#090d18"/><stop offset="1" stop-color="#111a2c"/>
+  </linearGradient>
+  <style>
+    text { font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif; fill: #eef3ff; }
+    .title { font-size: 28px; font-weight: 700; } .subtitle { font-size: 14px; fill: #93a4c7; }
+    .kpi { font-size: 32px; font-weight: 750; fill: #47d7ac; } .label { font-size: 15px; fill: #aab8d5; }
+    .paneltitle { font-size: 18px; font-weight: 650; } .barvalue { font-size: 13px; font-weight: 650; }
+    .small { font-size: 12px; fill: #b7c3dc; }
+  </style>
+</defs>
+<rect width="1200" height="700" rx="28" fill="url(#bg)"/>
+<circle cx="1100" cy="34" r="145" fill="#233c61" opacity="0.25"/>
+<text x="42" y="48" class="title">MiniMind 63.9M · RTX 4090 Systems Study</text>
+<text x="42" y="74" class="subtitle">BF16 · SDPA · controlled A/B benchmarks · real held-out corpus</text>
+<rect x="42" y="96" width="258" height="112" rx="18" fill="#151d31" stroke="#2b3858"/><text x="64" y="143" class="kpi">+64.2%</text><text x="64" y="177" class="label">Inductor throughput</text><rect x="322" y="96" width="258" height="112" rx="18" fill="#151d31" stroke="#2b3858"/><text x="344" y="143" class="kpi">-39.8%</text><text x="344" y="177" class="label">p50 step latency</text><rect x="602" y="96" width="258" height="112" rx="18" fill="#151d31" stroke="#2b3858"/><text x="624" y="143" class="kpi">-28.8%</text><text x="624" y="177" class="label">compiled peak VRAM</text><rect x="882" y="96" width="258" height="112" rx="18" fill="#151d31" stroke="#2b3858"/><text x="904" y="143" class="kpi">-94.3%</text><text x="904" y="177" class="label">held-out perplexity</text>
+<rect x="42" y="236" width="510" height="395" rx="20" fill="#121a2c" stroke="#273552"/>
+<text x="62" y="274" class="paneltitle">Training throughput</text>
+<text x="62" y="297" class="subtitle">50 measured steps; five warmup steps excluded</text>
+<text x="62" y="320" class="label">Eager</text><rect x="62" y="330" width="380" height="34" rx="8" fill="#202a43"/><rect x="62" y="330" width="231.5" height="34" rx="8" fill="#6b7da8"/><text x="283.5" y="354" text-anchor="end" class="barvalue">2,534 tok/s</text><text x="62" y="412" class="label">Inductor</text><rect x="62" y="422" width="380" height="34" rx="8" fill="#202a43"/><rect x="62" y="422" width="380.0" height="34" rx="8" fill="#47d7ac"/><text x="432.0" y="446" text-anchor="end" class="barvalue">4,160 tok/s</text>
+<text x="62" y="536" class="paneltitle">Cold-start tradeoff</text>
+<text x="62" y="566" class="label">First compiled step: 33.42s</text>
+<text x="62" y="594" class="label">Estimated break-even: 1,229 steps</text>
+<rect x="580" y="236" width="578" height="395" rx="20" fill="#121a2c" stroke="#273552"/>
+<text x="606" y="274" class="paneltitle">Static KV cache peak-memory reduction</text>
+<text x="606" y="297" class="subtitle">Relative to dynamic cache; all BF16 correctness checks passed</text>
+<text x="632" y="319" class="small">ctx 128 / bs 1</text><rect x="770" y="301" width="350" height="24" rx="6" fill="#202a43"/><rect x="770" y="301" width="9.8" height="24" rx="6" fill="#7c8cff"/><text x="1135" y="319" class="small" text-anchor="end">0.56%</text><text x="632" y="371" class="small">ctx 128 / bs 8</text><rect x="770" y="353" width="350" height="24" rx="6" fill="#202a43"/><rect x="770" y="353" width="14.3" height="24" rx="6" fill="#7c8cff"/><text x="1135" y="371" class="small" text-anchor="end">0.82%</text><text x="632" y="423" class="small">ctx 512 / bs 1</text><rect x="770" y="405" width="350" height="24" rx="6" fill="#202a43"/><rect x="770" y="405" width="46.7" height="24" rx="6" fill="#7c8cff"/><text x="1135" y="423" class="small" text-anchor="end">2.67%</text><text x="632" y="475" class="small">ctx 512 / bs 8</text><rect x="770" y="457" width="350" height="24" rx="6" fill="#202a43"/><rect x="770" y="457" width="188.1" height="24" rx="6" fill="#7c8cff"/><text x="1135" y="475" class="small" text-anchor="end">10.75%</text><text x="632" y="527" class="small">ctx 1024 / bs 1</text><rect x="770" y="509" width="350" height="24" rx="6" fill="#202a43"/><rect x="770" y="509" width="96.4" height="24" rx="6" fill="#7c8cff"/><text x="1135" y="527" class="small" text-anchor="end">5.51%</text><text x="632" y="579" class="small">ctx 1024 / bs 8</text><rect x="770" y="561" width="350" height="24" rx="6" fill="#202a43"/><rect x="770" y="561" width="284.6" height="24" rx="6" fill="#7c8cff"/><text x="1135" y="579" class="small" text-anchor="end">16.26%</text>
+<text x="42" y="674" class="subtitle">
+  Source commit 84f04c56c31b · PyTorch 2.5.1+cu124 · NVIDIA GeForce RTX 4090
+</text>
+</svg>

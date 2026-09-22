@@ -1,0 +1,140 @@
+{
+  "schema_version": 2,
+  "environment": {
+    "python": "3.12.3",
+    "torch": "2.5.1+cu124",
+    "transformers": "5.17.0",
+    "platform": "Linux-5.15.0-78-generic-x86_64-with-glibc2.35",
+    "device": "cuda",
+    "accelerator": "NVIDIA GeForce RTX 4090"
+  },
+  "model": {
+    "preset": {
+      "hidden_size": 768,
+      "num_hidden_layers": 8,
+      "num_attention_heads": 8,
+      "num_key_value_heads": 4
+    },
+    "parameters": 63912192,
+    "parameters_millions": 63.9122,
+    "estimated_fp32_size_mb": 243.806
+  },
+  "attention": {
+    "requested": "sdpa",
+    "sdpa_enabled": true,
+    "effective": "sdpa"
+  },
+  "workload": {
+    "prompt_tokens": 128,
+    "max_new_tokens": 64,
+    "warmup_requests": 3,
+    "measured_requests": 10,
+    "batch_size": 1,
+    "batch_composition": "homogeneous: one prompt repeated across the batch",
+    "decoding": "greedy"
+  },
+  "variants": [
+    {
+      "variant": "no_cache",
+      "cache_mode": "none",
+      "batch_size": 1,
+      "precision": "bf16",
+      "parameter_dtype": "bfloat16",
+      "warmup_requests": 3,
+      "measured_requests": 10,
+      "generated_tokens": 640,
+      "throughput_tokens_per_second": 116.674,
+      "ttft_p50_ms": 8.547,
+      "ttft_p95_ms": 11.364,
+      "request_latency_p50_ms": 545.544,
+      "request_latency_p95_ms": 564.751,
+      "inter_token_latency_p50_ms": 8.445,
+      "inter_token_latency_p95_ms": 9.37,
+      "request_latency_mean_ms": 548.537,
+      "process_rss_delta_mb": 0.211,
+      "peak_gpu_memory_mb": 137.804
+    },
+    {
+      "variant": "dynamic_cache",
+      "cache_mode": "dynamic",
+      "batch_size": 1,
+      "precision": "bf16",
+      "parameter_dtype": "bfloat16",
+      "warmup_requests": 3,
+      "measured_requests": 10,
+      "generated_tokens": 640,
+      "throughput_tokens_per_second": 118.264,
+      "ttft_p50_ms": 8.619,
+      "ttft_p95_ms": 8.662,
+      "request_latency_p50_ms": 539.673,
+      "request_latency_p95_ms": 547.342,
+      "inter_token_latency_p50_ms": 8.404,
+      "inter_token_latency_p95_ms": 8.582,
+      "request_latency_mean_ms": 541.162,
+      "process_rss_delta_mb": 0.074,
+      "peak_gpu_memory_mb": 137.456
+    },
+    {
+      "variant": "static_cache",
+      "cache_mode": "static",
+      "batch_size": 1,
+      "precision": "bf16",
+      "parameter_dtype": "bfloat16",
+      "warmup_requests": 3,
+      "measured_requests": 10,
+      "generated_tokens": 640,
+      "throughput_tokens_per_second": 116.672,
+      "ttft_p50_ms": 8.902,
+      "ttft_p95_ms": 9.043,
+      "request_latency_p50_ms": 547.472,
+      "request_latency_p95_ms": 553.275,
+      "inter_token_latency_p50_ms": 8.524,
+      "inter_token_latency_p95_ms": 8.648,
+      "request_latency_mean_ms": 548.545,
+      "process_rss_delta_mb": 0.145,
+      "peak_gpu_memory_mb": 136.692,
+      "kv_cache_allocated_mb": 2.25,
+      "cache_buffer_reused": true
+    }
+  ],
+  "precision": "bf16",
+  "parameter_dtype": "bfloat16",
+  "correctness_reference": "no_cache",
+  "correctness_matches_reference": {
+    "no_cache": true,
+    "dynamic_cache": false,
+    "static_cache": false
+  },
+  "first_divergent_token_index": {
+    "dynamic_cache": 184,
+    "static_cache": 184
+  },
+  "comparisons": {
+    "dynamic_vs_no_cache": {
+      "throughput_speedup_x": 1.014,
+      "throughput_improvement_percent": 1.36,
+      "p95_latency_reduction_percent": 3.08
+    },
+    "static_vs_dynamic": {
+      "throughput_speedup_x": 0.987,
+      "throughput_improvement_percent": -1.35,
+      "p95_latency_reduction_percent": -1.08
+    },
+    "static_vs_no_cache": {
+      "throughput_speedup_x": 1.0,
+      "throughput_improvement_percent": -0.0,
+      "p95_latency_reduction_percent": 2.03
+    }
+  },
+  "compile": null,
+  "quantization": null,
+  "correctness_matches_no_cache": {
+    "no_cache": true,
+    "dynamic_cache": false,
+    "static_cache": false
+  },
+  "required_correctness": {
+    "static_matches_dynamic": true
+  },
+  "correctness_is_enforced": true
+}

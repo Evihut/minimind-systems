@@ -1,0 +1,15 @@
+{
+  "source": "modelscope",
+  "dataset": "gongjy/minimind_dataset",
+  "file": "pretrain_t2t_mini.jsonl",
+  "revision": "master",
+  "url": "https://www.modelscope.cn/api/v1/datasets/gongjy/minimind_dataset/repo?Revision=master&FilePath=pretrain_t2t_mini.jsonl",
+  "downloaded_bytes": 26400000,
+  "parsed_bytes": 26399446,
+  "prefix_sha256": "8e479785126792691e91fe9ce6e9d81bd419335238b81fa46a2b3501ebf13798",
+  "text_field": "text",
+  "train": "dataset/pretrain_t2t_mini_train.jsonl",
+  "train_records": 20000,
+  "validation": "dataset/pretrain_t2t_mini_holdout.jsonl",
+  "validation_records": 2000
+}
